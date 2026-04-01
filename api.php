@@ -45,6 +45,18 @@ function logActivity($workspace_id, $action, $target_name)
     }
 }
 
+// Touch Workspace Helper: Manually update workspace timestamp
+function touchWorkspace($workspace_id)
+{
+    global $pdo;
+    if (!$workspace_id) return;
+    try {
+        $stmt = $pdo->prepare("UPDATE workspaces SET updated_at = CURRENT_TIMESTAMP WHERE id = ?");
+        $stmt->execute([$workspace_id]);
+    } catch (Exception $e) {
+    }
+}
+
 function getWorkspaceIdForStatus($category_id)
 {
     global $pdo;
@@ -144,6 +156,27 @@ try {
         case 'logout':
             session_destroy();
             jsonResponse(['success' => true]);
+            break;
+
+        case 'check_updates':
+            requireAuth();
+            $workspace_id = $input['workspace_id'] ?? 0;
+            $last_updated = $input['last_updated'] ?? '';
+
+            if (!$workspace_id || !$last_updated) {
+                jsonResponse(['has_updates' => false]);
+            }
+
+            $stmt = $pdo->prepare("SELECT updated_at FROM workspaces WHERE id = ?");
+            $stmt->execute([$workspace_id]);
+            $current_updated = $stmt->fetchColumn();
+
+            // Compare timestamps (strings are fine for direct comparison if DB format is consistent)
+            $has_updates = ($current_updated > $last_updated);
+            jsonResponse([
+                'has_updates' => $has_updates,
+                'current_updated' => $current_updated
+            ]);
             break;
 
         case 'check_auth':
@@ -305,6 +338,8 @@ try {
             $stmt = $pdo->prepare("UPDATE events SET is_public = ? WHERE id = ?");
             $stmt->execute([$is_public, $event_id]);
 
+            touchWorkspace(getWorkspaceIdForEvent($event_id));
+
             jsonResponse(['success' => true]);
             break;
 
@@ -382,7 +417,8 @@ try {
                 'event_items' => $event_items,
                 'assignments' => $assignments,
                 'members' => $members,
-                'activity_log' => $activity_log
+                'activity_log' => $activity_log,
+                'server_time' => date('Y-m-d H:i:s') // Useful for client-server sync
             ]);
             break;
 
@@ -396,6 +432,8 @@ try {
 
             $stmt = $pdo->prepare("INSERT INTO categories (workspace_id, name) VALUES (?, ?)");
             $stmt->execute([$workspace_id, $name]);
+
+            touchWorkspace($workspace_id);
 
             jsonResponse(['success' => true, 'id' => $pdo->lastInsertId()]);
             break;
@@ -423,9 +461,12 @@ try {
             // 3. Delete events in this category
             $pdo->prepare("DELETE FROM events WHERE event_category_id = ?")->execute([$category_id]);
 
+            $workspace_id = getWorkspaceIdForStatus($category_id);
             // 4. Finally delete the category
             $stmt = $pdo->prepare("DELETE FROM categories WHERE id = ?");
             $stmt->execute([$category_id]);
+
+            touchWorkspace($workspace_id);
 
             jsonResponse(['success' => true]);
             break;
@@ -440,6 +481,8 @@ try {
 
             $stmt = $pdo->prepare("INSERT INTO events (event_category_id, title) VALUES (?, ?)");
             $stmt->execute([$category_id, $title]);
+
+            touchWorkspace(getWorkspaceIdForStatus($category_id));
 
             jsonResponse(['success' => true, 'id' => $pdo->lastInsertId()]);
             break;
@@ -505,7 +548,17 @@ try {
             $start_date = $input['start_date'] ?? null;
             $end_date = $input['end_date'] ?? null;
             $show_details = $input['show_details'] ?? null;
-            $board_items_limit = $input['board_items_limit'] ?? null;
+            $expected_updated_at = $input['updated_at'] ?? null;
+
+            // OPTIMISTIC LOCKING: Verify the record hasn't changed since it was loaded
+            if ($expected_updated_at) {
+                $stmt = $pdo->prepare("SELECT updated_at FROM events WHERE id = ?");
+                $stmt->execute([$event_id]);
+                $current_updated = $stmt->fetchColumn();
+                if ($current_updated > $expected_updated_at) {
+                    jsonResponse(['error' => 'Conflict detected: This event was modified by someone else.', 'code' => 409], 409);
+                }
+            }
 
             error_log("DEBUG update_event: " . print_r($input, true));
 
@@ -565,6 +618,11 @@ try {
             try {
                 $stmt = $pdo->prepare("UPDATE events SET " . implode(', ', $fields) . " WHERE id = ?");
                 $stmt->execute($params);
+
+                // Manually touch the workspace to notify other pollers
+                $workspace_id = getWorkspaceIdForEvent($event_id);
+                touchWorkspace($workspace_id);
+
                 jsonResponse(['success' => true]);
             } catch (Exception $e) {
                 jsonResponse(['error' => 'Database error: ' . $e->getMessage()], 500);
@@ -604,13 +662,26 @@ try {
             $link_url = $input['link_url'] ?? null;
             $is_divider = isset($input['is_divider']) ? (int) $input['is_divider'] : 0;
 
+            $expected_updated_at = $input['updated_at'] ?? null;
+
             if (empty($title))
                 jsonResponse(['error' => 'Title required'], 400);
+
+            // OPTIMISTIC LOCKING
+            if ($expected_updated_at) {
+                $stmt = $pdo->prepare("SELECT updated_at FROM event_items WHERE id = ?");
+                $stmt->execute([$item_id]);
+                $current_updated = $stmt->fetchColumn();
+                if ($current_updated > $expected_updated_at) {
+                    jsonResponse(['error' => 'Conflict detected: This item was modified by someone else.', 'code' => 409], 409);
+                }
+            }
 
             $stmt = $pdo->prepare("UPDATE event_items SET title=?, subtitle=?, item_date=?, start_time=?, end_date=?, end_time=?, link_url=?, is_divider=? WHERE id=?");
             $stmt->execute([$title, $subtitle, $item_date ?: null, $start_time ?: null, $end_date ?: null, $end_time ?: null, $link_url ?: null, $is_divider, $item_id]);
 
             $workspace_id = getWorkspaceIdForItem($item_id);
+            touchWorkspace($workspace_id);
             logActivity($workspace_id, 'updated item', $title);
 
             jsonResponse(['success' => true]);
@@ -626,6 +697,7 @@ try {
             $stmt = $pdo->prepare("DELETE FROM event_items WHERE id = ?");
             $stmt->execute([$item_id]);
 
+            touchWorkspace($workspace_id);
             logActivity($workspace_id, 'deleted item', $title ?: 'Unknown Item');
 
             jsonResponse(['success' => true]);
@@ -640,10 +712,13 @@ try {
             $pdo->beginTransaction();
             try {
                 $stmt = $pdo->prepare("UPDATE event_items SET sort_order = ? WHERE id = ?");
+                $workspace_id = null;
                 foreach ($item_ids as $index => $id) {
+                    if (!$workspace_id) $workspace_id = getWorkspaceIdForItem($id);
                     $stmt->execute([$index + 1, (int) $id]);
                 }
                 $pdo->commit();
+                if ($workspace_id) touchWorkspace($workspace_id);
                 jsonResponse(['success' => true]);
             } catch (Exception $e) {
                 $pdo->rollBack();
@@ -662,6 +737,7 @@ try {
             $stmt = $pdo->prepare("UPDATE event_items SET is_flagged = NOT is_flagged WHERE id = ?");
             $stmt->execute([$item_id]);
 
+            touchWorkspace($workspace_id);
             logActivity($workspace_id, $action, $item['title']);
 
             jsonResponse(['success' => true]);
@@ -678,6 +754,7 @@ try {
             $stmt = $pdo->prepare("UPDATE event_items SET is_done = NOT is_done WHERE id = ?");
             $stmt->execute([$item_id]);
 
+            touchWorkspace($workspace_id);
             logActivity($workspace_id, $action, $item['title']);
 
             jsonResponse(['success' => true]);
@@ -792,6 +869,9 @@ try {
 
             $stmt = $pdo->prepare("INSERT IGNORE INTO item_assignments (item_id, user_id) VALUES (?, ?)");
             $stmt->execute([$item_id, $user_id]);
+
+            $workspace_id = getWorkspaceIdForItem($item_id);
+            touchWorkspace($workspace_id);
 
             // Email Notification (Mocked for now)
             $workspace_id = getWorkspaceIdForItem($item_id);

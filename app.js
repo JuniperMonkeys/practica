@@ -19,7 +19,10 @@ const App = {
         currentEventItems: [],
         currentEventAssignments: [],
         editingItem: null,
-        shouldRefreshBoard: false
+        shouldRefreshBoard: false,
+        lastUpdateSeen: null,
+        isUpdateAvailable: false,
+        pollTimer: null
     },
 
     init: async () => {
@@ -47,6 +50,24 @@ const App = {
         }
 
         await App.checkAuth();
+        App.startPolling();
+    },
+
+    startPolling: () => {
+        if (App.state.pollTimer) clearInterval(App.state.pollTimer);
+        App.state.pollTimer = setInterval(async () => {
+            if (App.state.currentWorkspace && !App.state.isUpdateAvailable) {
+                const res = await App.api({
+                    action: 'check_updates',
+                    workspace_id: App.state.currentWorkspace.id,
+                    last_updated: App.state.lastUpdateSeen
+                });
+                if (res.has_updates) {
+                    App.state.isUpdateAvailable = true;
+                    App.renderBoard();
+                }
+            }
+        }, 15000); // 15 seconds
     },
 
     // --- Helpers ---
@@ -80,7 +101,7 @@ const App = {
     api: async (data) => {
         try {
             const controller = new AbortController();
-            const id = setTimeout(() => controller.abort(), 5000); // 5 sec timeout
+            const id = setTimeout(() => controller.abort(), 10000); // Increased to 10s for reliability
 
             const response = await fetch('api.php', {
                 method: 'POST',
@@ -90,15 +111,30 @@ const App = {
             });
             clearTimeout(id);
             const text = await response.text();
+            
             try {
-                return JSON.parse(text);
+                const json = JSON.parse(text);
+                if (json.code === 409) {
+                    Swal.fire({
+                        title: 'Conflict Detected',
+                        text: json.error || 'Someone else modified this while you were editing.',
+                        icon: 'warning',
+                        confirmButtonText: 'Reload Data',
+                        showCancelButton: true
+                    }).then((result) => {
+                        if (result.isConfirmed && App.state.currentWorkspace) {
+                            App.openWorkspace(App.state.currentWorkspace.id);
+                        }
+                    });
+                }
+                return json;
             } catch (e) {
                 console.error("API Error (Non-JSON):", text);
                 return { error: "Server Error: " + text.substring(0, 100) };
             }
         } catch (error) {
             console.error("API Error:", error);
-            return { error: "Network error" };
+            return { error: "Network error or timeout" };
         }
     },
 
@@ -199,6 +235,8 @@ const App = {
             // Update workspace details from server (to get latest notes)
             if (res.workspace) {
                 App.state.currentWorkspace = res.workspace;
+                App.state.lastUpdateSeen = res.workspace.updated_at;
+                App.state.isUpdateAvailable = false;
             }
 
             App.renderBoard();
@@ -487,6 +525,12 @@ const App = {
         }).join('');
 
         app.innerHTML = `
+			${App.state.isUpdateAvailable ? `
+				<div class="update-banner" id="update-banner">
+					<i class="fa-solid fa-sync fa-spin"></i> New updates available in this workspace. 
+					<button class="btn btn-sm btn-primary" onclick="App.openWorkspace(App.state.currentWorkspace.id)">Refresh Now</button>
+				</div>
+			` : ''}
 			<div class="workspace-header-actions">
 				<div class="workspace-title-group">
 					<h2><i class="fa-solid fa-calendar-check"></i> ${ws.name}</h2>
@@ -1021,7 +1065,11 @@ const App = {
 
     updateEventField: async (field, value) => {
         console.log(`[DEBUG] updateEventField called - field: ${field}, value: ${value}`);
-        let data = { action: 'update_event', event_id: App.state.currentEvent.id };
+        let data = { 
+            action: 'update_event', 
+            event_id: App.state.currentEvent.id,
+            updated_at: App.state.currentEvent.updated_at 
+        };
         data[field] = value;
 
         console.log(`[DEBUG] Payload to be sent:`, data);
@@ -1152,7 +1200,8 @@ const App = {
             start_time,
             end_date,
             end_time,
-            is_divider
+            is_divider,
+            updated_at: App.state.editingItem.updated_at
         });
 
         if (res.success) {

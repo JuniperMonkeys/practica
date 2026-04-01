@@ -1422,3 +1422,27 @@ body.modal-open {
     gap: 5px;
     margin-left: 10px;
 }
+
+/* Real-time Update Banner */
+.update-banner {
+    background: var(--color-sea-blue);
+    color: white;
+    padding: 12px 20px;
+    border-radius: var(--radius-md);
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    animation: slideDown 0.4s ease-out;
+    box-shadow: var(--shadow-hover);
+    border-left: 5px solid var(--color-accent);
+}
+
+.update-banner i {
+    margin-right: 10px;
+}
+
+@keyframes slideDown {
+    from { transform: translateY(-20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
