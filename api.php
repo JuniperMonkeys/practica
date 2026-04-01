@@ -1,8 +1,4 @@
 <?php
-/**
- * Practica API: The engine room for our UC Davis event management system.
- * Handles all AJAX requests with a clean, professional touch.
- */
 
 header('Content-Type: application/json');
 // Extend session lifetime to 30 days (2592000 seconds)
@@ -49,7 +45,8 @@ function logActivity($workspace_id, $action, $target_name)
 function touchWorkspace($workspace_id)
 {
 	global $pdo;
-	if (!$workspace_id) return;
+	if (!$workspace_id)
+		return;
 	try {
 		$stmt = $pdo->prepare("UPDATE workspaces SET updated_at = CURRENT_TIMESTAMP WHERE id = ?");
 		$stmt->execute([$workspace_id]);
@@ -82,8 +79,11 @@ function getWorkspaceIdForItem($item_id)
 }
 
 try {
+	// This switch is where every request from the frontend gets processed.
+	// We handle everything from the initial handshake (auth) to the deep data dives.
 	switch ($action) {
 		case 'register':
+			// Welcoming a new member to the crew! 
 			if (isset($_SESSION['user_id'])) {
 				jsonResponse(['error' => 'Already logged in'], 400);
 			}
@@ -96,7 +96,7 @@ try {
 				jsonResponse(['error' => 'Username and password required'], 400);
 			}
 
-			// Check if user exists
+			// Scouting the horizon to see if this username is already taken.
 			$stmt = $pdo->prepare("SELECT id FROM users WHERE username = ?");
 			$stmt->execute([$username]);
 			if ($stmt->fetch()) {
@@ -230,7 +230,8 @@ try {
 				$pdo->commit();
 				jsonResponse(['success' => true, 'workspace' => ['id' => $workspace_id, 'name' => $name]]);
 			} catch (Exception $e) {
-				if ($pdo->inTransaction()) $pdo->rollBack();
+				if ($pdo->inTransaction())
+					$pdo->rollBack();
 				jsonResponse(['error' => $e->getMessage()], 500);
 			}
 			break;
@@ -288,7 +289,8 @@ try {
 				$pdo->commit();
 				jsonResponse(['success' => true]);
 			} catch (Exception $e) {
-				if ($pdo->inTransaction()) $pdo->rollBack();
+				if ($pdo->inTransaction())
+					$pdo->rollBack();
 				jsonResponse(['error' => 'Failed to reorder'], 500);
 			}
 			break;
@@ -312,7 +314,8 @@ try {
 				$pdo->commit();
 				jsonResponse(['success' => true]);
 			} catch (Exception $e) {
-				if ($pdo->inTransaction()) $pdo->rollBack();
+				if ($pdo->inTransaction())
+					$pdo->rollBack();
 				jsonResponse(['error' => 'Failed to reorder categories'], 500);
 			}
 			break;
@@ -357,7 +360,7 @@ try {
 			requireAuth();
 			$workspace_id = $input['workspace_id'] ?? 0;
 			// Verify access
-			// TODO: Strict permission check (editor/viewer)
+			// Add... Strict permission check (editor/viewer)
 
 			// Get Categories
 			$stmt = $pdo->prepare("SELECT * FROM categories WHERE workspace_id = ? ORDER BY sort_order ASC, created_at ASC");
@@ -550,7 +553,7 @@ try {
 			$show_details = $input['show_details'] ?? null;
 			$expected_updated_at = $input['updated_at'] ?? null;
 
-			// OPTIMISTIC LOCKING: Verify the record hasn't changed since it was loaded
+			// Optimistic Locking, or: verify the record hasn't changed since it was loaded
 			if ($expected_updated_at) {
 				$stmt = $pdo->prepare("SELECT updated_at FROM events WHERE id = ?");
 				$stmt->execute([$event_id]);
@@ -678,7 +681,8 @@ try {
 				logActivity($workspace_id, 'deleted event', $title ?: 'Unknown Event');
 				jsonResponse(['success' => true]);
 			} catch (Exception $e) {
-				if ($pdo->inTransaction()) $pdo->rollBack();
+				if ($pdo->inTransaction())
+					$pdo->rollBack();
 				jsonResponse(['error' => 'Failed to delete event', 'details' => $e->getMessage()], 500);
 			}
 			break;
@@ -747,14 +751,17 @@ try {
 				$stmt = $pdo->prepare("UPDATE event_items SET sort_order = ? WHERE id = ?");
 				$workspace_id = null;
 				foreach ($item_ids as $index => $id) {
-					if (!$workspace_id) $workspace_id = getWorkspaceIdForItem($id);
+					if (!$workspace_id)
+						$workspace_id = getWorkspaceIdForItem($id);
 					$stmt->execute([$index + 1, (int) $id]);
 				}
 				$pdo->commit();
-				if ($workspace_id) touchWorkspace($workspace_id);
+				if ($workspace_id)
+					touchWorkspace($workspace_id);
 				jsonResponse(['success' => true]);
 			} catch (Exception $e) {
-				if ($pdo->inTransaction()) $pdo->rollBack();
+				if ($pdo->inTransaction())
+					$pdo->rollBack();
 				jsonResponse(['error' => 'Failed to reorder items', 'details' => $e->getMessage()], 500);
 			}
 			break;

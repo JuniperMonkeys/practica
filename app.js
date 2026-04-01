@@ -1,20 +1,19 @@
-/**
- * Practica Application Logic
- */
-
 const App = {
+	// --- The Brain of Practica ---
+	// This object holds all our state, rendering logic, and API interactions.
+	// Practica is a fork of my tool called Cloud Hat, so this is sort of an odd mix of OG stuff and bolt-ons.
 	state: {
-		user: null, // Who's steering the ship today?
-		currentWorkspace: null,
-		workspaces: [],
+		user: null, // Who's steering the ship today? Let's find out!
+		currentWorkspace: null, // The active hub for all our local projects.
+		workspaces: [], // A collection of all the workspaces we have access to.
 		view: 'board', // Board view is king for at-a-glance status.
-		calendarDate: new Date(),
-		placeholders: [],
-		// New features:
-		categories: [],
-		events: [], // Formerly "trips" - sounds much more professional for the cluster.
-		eventItems: [],
-		assignments: [],
+		calendarDate: new Date(), // Where are we in time? 
+		placeholders: [], // Some inspiration for when users are staring at a blank slate.
+		// The core data engine:
+		categories: [], // Grouping headers (Economics, History, etc.)
+		events: [], // The main projects - formerly "trips" in Cloud Hat, but now "events".
+		eventItems: [], // The individual tasks that make everything happen.
+		assignments: [], // Who is doing what?
 		currentEvent: null,
 		currentEventItems: [],
 		currentEventAssignments: [],
@@ -22,7 +21,8 @@ const App = {
 		shouldRefreshBoard: false,
 		lastUpdateSeen: null,
 		isUpdateAvailable: false,
-		pollTimer: null
+		pollTimer: null,
+		pendingCelebration: false // To make sure the confetti pops.
 	},
 
 	init: async () => {
@@ -70,7 +70,7 @@ const App = {
 		}, 15000); // 15 seconds
 	},
 
-	// --- Helpers ---
+	// Helpers
 	formatTime: (timeStr) => {
 		if (!timeStr) return '';
 		const [h, m] = timeStr.split(':');
@@ -97,7 +97,7 @@ const App = {
 		};
 	},
 
-	// --- API Interactions ---
+	// API Interactions
 	api: async (data) => {
 		try {
 			const controller = new AbortController();
@@ -111,7 +111,7 @@ const App = {
 			});
 			clearTimeout(id);
 			const text = await response.text();
-			
+
 			try {
 				const json = JSON.parse(text);
 				if (json.code === 409) {
@@ -138,7 +138,7 @@ const App = {
 		}
 	},
 
-	// --- Authentication ---
+	// Authentication
 	checkAuth: async () => {
 		const res = await App.api({ action: 'check_auth' });
 		if (res.authenticated) {
@@ -204,18 +204,17 @@ const App = {
 	},
 
 	openWorkspace: async (id) => {
-		console.log("Opening workspace ID:", id);
-		// alert("Opening workspace: " + id); // Debug
-
-		const workspace = App.state.workspaces.find(w => w.id == id); // Loose equality for string/number safety
+		console.log("Practica Power: Opening workspace ID:", id);
+		// We loose-check (==) here to be safe with string/number IDs from the URL or state.
+		const workspace = App.state.workspaces.find(w => w.id == id);
 		if (!workspace) {
-			console.error("Workspace not found in state:", id, App.state.workspaces);
+			console.error("Workspace lost at sea:", id, App.state.workspaces);
 			alert("Error: Workspace not found locally.");
 			return;
 		}
 		App.state.currentWorkspace = workspace;
 
-		// Load details
+		// Time to load the treasure chest of data from the server.
 		try {
 			const res = await App.api({ action: 'get_workspace_details', workspace_id: id });
 			console.log("Workspace details loaded:", res);
@@ -276,7 +275,7 @@ const App = {
 		}
 	},
 
-	// --- Rendering ---
+	// Rendering
 	renderLogin: () => {
 		const app = document.getElementById('app');
 		app.innerHTML = `
@@ -539,8 +538,9 @@ const App = {
 						<button class="btn btn-sm btn-secondary facepile-btn"><i class="fa-solid fa-user-plus"></i></button>
 					</div>
 					<div class="view-toggle">
-						<button class="btn btn-sm ${App.state.view === 'board' ? 'btn-primary' : 'btn-secondary'}" onclick="App.setView('board')"><i class="fa-solid fa-columns"></i></button>
-						<button class="btn btn-sm ${App.state.view === 'calendar' ? 'btn-primary' : 'btn-secondary'}" onclick="App.setView('calendar')"><i class="fa-solid fa-calendar-days"></i></button>
+						<button class="btn btn-sm ${App.state.view === 'board' ? 'btn-primary' : 'btn-secondary'}" onclick="App.setView('board')" title="Big Board"><i class="fa-solid fa-columns"></i></button>
+						<button class="btn btn-sm ${App.state.view === 'calendar' ? 'btn-primary' : 'btn-secondary'}" onclick="App.setView('calendar')" title="Calendar View"><i class="fa-solid fa-calendar-days"></i></button>
+						<button class="btn btn-sm ${App.state.view === 'my-work' ? 'btn-primary' : 'btn-secondary'}" onclick="App.setView('my-work')" title="My Work"><i class="fa-solid fa-user-check"></i></button>
 					</div>
 					<button class="btn btn-primary btn-sm mobile-menu-toggle" onclick="document.getElementById('workspace-actions').classList.toggle('active')"><i class="fa-solid fa-bars"></i></button>
 				</div>
@@ -559,20 +559,210 @@ const App = {
 		</details>
 	</div>
 
-			${App.state.view === 'calendar' ? App.renderCalendar() : `
-			<div class="board-container" ondragover="App.allowDropCategory(event)" ondrop="App.dropCategory(event)">
-				${columnsHtml}
-				${App.state.categories.length === 0 ? '<div style="padding: 20px; color: var(--color-text-light);">No categories yet. Click "New Category" to start!</div>' : ''}
-			</div>
-			`}
+			${App.state.view === 'calendar' ? App.renderCalendar() : (App.state.view === 'my-work' ? App.renderMyWorkView() : App.renderBoardContent())}
 `;
 		setTimeout(() => window.scrollTo(0, 0), 10); // Prevent browser from maintaining previous scroll position and wait for DOM layout
+
+		if (App.state.pendingCelebration) {
+			App.state.pendingCelebration = false;
+			setTimeout(() => {
+				confetti({
+					particleCount: 250,
+					spread: 80,
+					origin: { y: 0.6 },
+					zIndex: 10000,
+					colors: ['#002851', '#DAAA00']
+				});
+			}, 100);
+		}
+
 		App.updateNav();
 	},
 
 	setView: (view) => {
 		App.state.view = view;
 		App.renderBoard();
+	},
+
+	renderBoardContent: () => {
+		const today = new Date().toISOString().split('T')[0];
+		const activeEvents = App.state.events.filter(t => !t.end_date || t.end_date >= today);
+		const allItems = App.state.eventItems || [];
+
+		const columnsHtml = App.state.categories.map(cat => {
+			const events = activeEvents.filter(t => t.event_category_id === cat.id);
+			events.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+
+			const eventsHtml = events.map(t => {
+				let items = allItems.filter(i => i.event_id === t.id);
+				items.sort((a, b) => {
+					const orderA = a.sort_order ?? 9999;
+					const orderB = b.sort_order ?? 9999;
+					if (orderA !== orderB) return orderA - orderB;
+					if (a.item_date && b.item_date) return a.item_date.localeCompare(b.item_date);
+					if (a.item_date) return -1;
+					if (b.item_date) return 1;
+					return 0;
+				});
+
+				const limit = t.board_items_limit ?? 3;
+				const itemsToShow = items.slice(0, limit);
+				const remaining = items.length - itemsToShow.length;
+
+				const itemsHtml = itemsToShow.map(i => {
+					const isFlagged = !!(i.is_flagged == 1 || i.is_flagged === true);
+					const isDone = !!(i.is_done == 1 || i.is_done === true);
+					if (i.is_divider == 1) return `<div class="mini-event-divider">${i.title}</div>`;
+
+					// Format date as MM/DD if present (Restore original board item logic)
+					let dateStr = '';
+					if (i.item_date) {
+						const startTime = App.formatTime(i.start_time);
+						const endTime = App.formatTime(i.end_time);
+						let range = '';
+						if (i.end_date || endTime) {
+							range = ' - ' + (i.end_date ? i.end_date.slice(5) : '') + (endTime ? ' ' + endTime : '');
+						}
+						dateStr = `<span style="font-size: 0.7em; color: var(--color-sea-blue); margin-right: 4px;">${i.item_date.slice(5)}${startTime ? ' ' + startTime : ''}${range}</span>`;
+					}
+
+					return `
+						<div class="mini-event-item ${isDone ? 'is-done' : ''}" style="display: flex; flex-direction: column; margin-bottom: 4px;" onclick="App.openEvent(${t.id})">
+							<div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 4px;">
+								<div style="display: flex; align-items: center; flex: 1; min-width: 0; flex-wrap: wrap;">
+									${dateStr}
+									<span class="mini-item-title" style="font-weight: 500; margin-right: 6px;">${i.title}</span>
+									<div class="mini-item-assignees" style="display: flex; flex-wrap: wrap; gap: 3px; align-items: center;">
+										${(App.state.assignments || []).filter(a => a.item_id == i.id).map(a => {
+						const avatar = App.getUserAvatar(a.username);
+						const name = a.first_name || a.username;
+						return `<div class="assignment-pill mini" title="${a.first_name} ${a.last_name}"><div class="avatar-circle" style="background-color: ${avatar.color};"><i class="fa-solid ${avatar.icon}"></i></div><span>${name}</span></div>`;
+					}).join('')}
+									</div>
+								</div>
+								<div class="mini-item-icons" style="display: flex; align-items: center; gap: 4px; color: var(--color-text-light); flex-shrink: 0; margin-top: 2px;">
+									${i.link_url ? `<i class="fa-solid fa-link" style="font-size: 0.75rem;"></i>` : ''}
+									${isFlagged ? '<i class="fa-solid fa-flag" style="color: var(--color-accent); font-size: 0.75rem;"></i>' : ''}
+								</div>
+							</div>
+							${(t.show_details == 1 || t.show_details === true) && i.subtitle ? `<div class="mini-item-details" style="font-size: 0.75rem; color: #888; margin-top: 2px; padding-left: 0; line-height: 1.3; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;">${i.subtitle}</div>` : ''}
+						</div>
+					`;
+				}).join('');
+
+				const dateRange = (t.start_date || t.end_date) ? `${t.start_date || ''}${t.end_date ? ' to ' + t.end_date : ''}` : '';
+
+				return `
+				<div class="event-card" onclick="App.openEvent(${t.id})">
+					<div class="event-title">${t.title}</div>
+					${dateRange ? `<div class="event-meta"><i class="fa-regular fa-calendar"></i> ${dateRange}</div>` : ''}
+					${t.location ? `<div class="event-meta"><i class="fa-solid fa-location-dot"></i> ${t.location}</div>` : ''}
+					${items.length > 0 ? `<div class="mini-items-container" style="margin-top: 10px; border-top: 1px dashed #eee; padding-top: 5px;">${itemsHtml}</div>` : ''}
+					${remaining > 0 ? `<div class="mini-items-more">+${remaining} more</div>` : ''}
+				</div>
+				`;
+			}).join('');
+
+			return `
+			<div class="category-column" draggable="true" ondragstart="App.dragCategory(event, ${cat.id})" id="cat-${cat.id}">
+				<div class="column-header" style="cursor: grab;">
+					<span>${cat.name} <span style="font-weight: normal; color: #777; font-size: 0.9em;">(${events.length})</span></span>
+					<button class="btn-icon delete" onclick="App.deleteCategory(${cat.id})" title="Delete Category"><i class="fa-solid fa-trash"></i></button>
+				</div>
+				<div class="event-list" ondragover="App.allowDrop(event)" ondrop="App.drop(event, ${cat.id})">
+					${eventsHtml}
+				</div>
+				<button class="btn btn-secondary btn-sm" style="margin-top: 10px; width: 100%;" onclick="App.createEvent(${cat.id})"><i class="fa-solid fa-plus"></i> Add Event</button>
+			</div>
+			`;
+		}).join('');
+
+		return `
+		<div class="board-container" ondragover="App.allowDropCategory(event)" ondrop="App.dropCategory(event)">
+			${columnsHtml}
+			${App.state.categories.length === 0 ? '<div style="padding: 20px; color: var(--color-text-light);">No categories yet. Click "New Category" to start!</div>' : ''}
+		</div>
+		`;
+	},
+
+	renderMyWorkView: () => {
+		const userId = App.state.user.id;
+		const myItemIds = (App.state.assignments || [])
+			.filter(a => a.user_id == userId)
+			.map(a => a.item_id);
+
+		if (myItemIds.length === 0) {
+			return `
+			<div class="my-work-no-tasks">
+				<i class="fa-solid fa-mug-hot"></i>
+				<h3>You're all caught up!</h3>
+				<p>No items assigned to you in this workspace.</p>
+			</div>
+			`;
+		}
+
+		const myItems = (App.state.eventItems || [])
+			.filter(i => myItemIds.includes(i.id));
+
+		// Group items by event
+		const groups = {};
+		myItems.forEach(item => {
+			if (!groups[item.event_id]) {
+				const event = App.state.events.find(e => e.id == item.event_id);
+				const category = App.state.categories.find(c => c.id == event?.event_category_id);
+				groups[item.event_id] = {
+					event: event || { title: 'Unknown Event', id: item.event_id },
+					category: category || { name: 'Uncategorized' },
+					items: []
+				};
+			}
+			groups[item.event_id].items.push(item);
+		});
+
+		const groupsHtml = Object.values(groups).map(group => {
+			const itemsHtml = group.items.map(i => {
+				const isFlagged = !!(i.is_flagged == 1 || i.is_flagged === true);
+				const isDone = !!(i.is_done == 1 || i.is_done === true);
+				const dateInfo = i.item_date ? `${i.item_date}${i.start_time ? ' ' + App.formatTime(i.start_time) : ''}` : '';
+
+				return `
+				<div class="my-work-item-row ${isDone ? 'is-done' : ''}">
+					<button class="btn-icon ${isDone ? 'done-active' : ''}" onclick="App.toggleDone(${i.id})">
+						<i class="fa-solid fa-check"></i>
+					</button>
+					<div class="my-work-item-main">
+						<div class="my-work-item-title">${i.title}</div>
+						${i.subtitle ? `<div class="my-work-item-subtitle">${i.subtitle}</div>` : ''}
+						${dateInfo ? `<div class="my-work-item-meta"><i class="fa-regular fa-clock"></i> ${dateInfo}</div>` : ''}
+					</div>
+					<div class="item-actions">
+						<button class="btn-icon ${isFlagged ? 'active' : ''}" onclick="App.toggleFlag(${i.id})">
+							<i class="${isFlagged ? 'fa-solid' : 'fa-regular'} fa-flag"></i>
+						</button>
+						<button class="btn-icon" onclick="App.openEvent(${group.event.id})" title="View in Event"><i class="fa-solid fa-arrow-right-to-bracket"></i></button>
+					</div>
+				</div>
+				`;
+			}).join('');
+
+			return `
+			<div class="my-work-event-group">
+				<div class="my-work-event-header">
+					<h3 onclick="App.openEvent(${group.event.id})">${group.category.name} – ${group.event.title}</h3>
+					<span class="badge">${group.items.length} ${group.items.length === 1 ? 'item' : 'items'}</span>
+				</div>
+				<div class="my-work-items-list">
+					${itemsHtml}
+				</div>
+			</div>
+			`;
+		}).join('');
+
+		return `
+		<div class="my-work-container">
+			${groupsHtml}
+		</div>
+		`;
 	},
 
 	saveWorkspaceNotes: async (notes) => {
@@ -1066,10 +1256,10 @@ const App = {
 
 	updateEventField: async (field, value) => {
 		console.log(`[DEBUG] updateEventField called - field: ${field}, value: ${value}`);
-		let data = { 
-			action: 'update_event', 
+		let data = {
+			action: 'update_event',
 			event_id: App.state.currentEvent.id,
-			updated_at: App.state.currentEvent.updated_at 
+			updated_at: App.state.currentEvent.updated_at
 		};
 		data[field] = value;
 
@@ -1248,14 +1438,49 @@ const App = {
 
 	toggleFlag: async (id) => {
 		await App.api({ action: 'toggle_flag', item_id: id });
-		App.openEvent(App.state.currentEvent.id);
+		if (App.state.currentEvent) {
+			App.openEvent(App.state.currentEvent.id);
+		} else {
+			App.openWorkspace(App.state.currentWorkspace.id);
+		}
 		App.shouldRefreshBoard = true;
 	},
 
 	toggleDone: async (id) => {
-		await App.api({ action: 'toggle_done', item_id: id });
-		App.openEvent(App.state.currentEvent.id);
-		App.shouldRefreshBoard = true;
+		// Detect if we are marking as done to trigger celebration
+		const item = App.state.eventItems.find(it => it.id == id);
+		const willBeDone = item && !(item.is_done == 1 || item.is_done === true);
+
+		const res = await App.api({ action: 'toggle_done', item_id: id });
+
+		if (res.success) {
+			if (willBeDone) {
+				App.state.pendingCelebration = true;
+			}
+
+			if (App.state.currentEvent) {
+				App.openEvent(App.state.currentEvent.id);
+			} else {
+				App.openWorkspace(App.state.currentWorkspace.id);
+			}
+			App.shouldRefreshBoard = true;
+		}
+	},
+
+	saveWorkspaceNotes: async (notes) => {
+		if (!App.state.currentWorkspace) return;
+
+		const res = await App.api({
+			action: 'update_workspace',
+			workspace_id: App.state.currentWorkspace.id,
+			notes: notes
+		});
+
+		if (res.success) {
+			App.state.currentWorkspace.notes = notes;
+		} else {
+			alert("Failed to save notes: " + (res.error || "Unknown error"));
+		}
 	},
 
 	generatePDF: async (tripId) => {
@@ -1372,7 +1597,7 @@ const App = {
 		}
 	},
 
-	// --- Modal Logic ---
+	// Modal Logic
 	openCreateWorkspaceModal: () => {
 		App.shouldRefreshBoard = false; // Reset
 		const body = document.getElementById('modal-body');
@@ -1397,7 +1622,7 @@ const App = {
 		}
 	},
 
-	// --- Event Handlers ---
+	// Event Handlers
 	handleLoginBtn: () => {
 		const u = document.getElementById('username').value;
 		const p = document.getElementById('password').value;
@@ -1493,7 +1718,7 @@ const App = {
 		App.openCreateWorkspaceModal();
 	},
 
-	// --- Drag and Drop ---
+	// Drag and Drop
 	drag: (ev, tripId) => {
 		ev.dataTransfer.setData("text/plain", tripId);
 		ev.dataTransfer.effectAllowed = "move";
@@ -1559,7 +1784,7 @@ const App = {
 			event_ids: newEventIds
 		});
 	},
-	// --- Trip Item Drag and Drop ---
+	// Trip Item Drag and Drop
 	dragItem: (ev, itemId) => {
 		ev.dataTransfer.setData("text/item", itemId);
 		ev.dataTransfer.effectAllowed = "move";
@@ -1625,7 +1850,7 @@ const App = {
 		});
 	},
 
-	// --- Category Drag and Drop ---
+	// Category Drag and Drop
 	dragCategory: (ev, categoryId) => {
 		// Prevent triggering if dragging a trip *inside* the category
 		if (ev.target.classList.contains('event-card')) return;
@@ -1701,7 +1926,7 @@ const App = {
 		});
 	},
 
-	// --- Item Assignments ---
+	// Item Assignments
 	openAssignPopup: (e, itemId) => {
 		e.stopPropagation();
 		// Remove existing popup if any
