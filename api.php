@@ -126,7 +126,50 @@ try {
 
 
 
+		case 'cas_sim':
+			// CAS Sim
+			// This is the "cargo cult CAS" stuff
+			// It simulates a "Lookup or Create" logic after a notionally-successful CAS handshake.
+			$username = trim($input['username'] ?? 'woangel'); // Default to target user for testing
+
+			if (empty($username)) {
+				jsonResponse(['error' => 'No CAS username provided'], 400);
+			}
+
+			// 1. Look for an existing user record.
+			$stmt = $pdo->prepare("SELECT * FROM users WHERE username = ?");
+			$stmt->execute([$username]);
+			$user = $stmt->fetch();
+
+			if (!$user) {
+				// 2. JIT Provisioning: If they don't exist, create them.
+				// We skip the password_hash since CAS is our source of truth.
+				$stmt = $pdo->prepare("INSERT INTO users (username, first_name, last_name, password_hash) VALUES (?, ?, ?, ?)");
+				$stmt->execute([$username, "CAS", "User", "SSO_MANAGED"]);
+				$user_id = $pdo->lastInsertId();
+
+				$stmt = $pdo->prepare("SELECT * FROM users WHERE id = ?");
+				$stmt->execute([$user_id]);
+				$user = $stmt->fetch();
+			}
+
+			// 3. Welcome aboard!
+			$_SESSION['user_id'] = $user['id'];
+			$_SESSION['username'] = $user['username'];
+			jsonResponse([
+				'success' => true,
+				'user' => [
+					'id' => $user['id'],
+					'username' => $user['username'],
+					'first_name' => $user['first_name'],
+					'last_name' => $user['last_name']
+				]
+			]);
+			break;
+
 		case 'login':
+			// Local Login
+			// Traditional password-based entry for admin or non-campus collaborators.
 			$username = trim($input['username'] ?? '');
 			$password = $input['password'] ?? '';
 

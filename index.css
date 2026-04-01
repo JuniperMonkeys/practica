@@ -428,28 +428,28 @@ main {
 
 .auth-divider {
 	text-align: center;
-	margin: -8px 0;
+	margin: 25px 0;
 	position: relative;
 	color: var(--color-text-light);
-	font-size: 0.9em;
+	font-size: 0.85rem;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 15px;
 }
 
 .auth-divider::before,
 .auth-divider::after {
 	content: '';
-	position: absolute;
-	top: 50%;
-	width: 40%;
+	flex: 1;
 	height: 1px;
 	background: var(--color-border-subtle);
 }
 
-.auth-divider::before {
-	left: 0;
-}
-
-.auth-divider::after {
-	right: 0;
+.auth-divider span {
+	background: var(--color-card-bg);
+	padding: 0 5px;
+	white-space: nowrap;
 }
 
 .form-group {
