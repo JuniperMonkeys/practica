@@ -1,284 +1,284 @@
 const App = {
-	// --- The Brain of Practica ---
-	// This object holds all our state, rendering logic, and API interactions.
-	// Practica is a fork of my tool called Cloud Hat, so this is sort of an odd mix of OG stuff and bolt-ons.
-	state: {
-		user: null, // Who's steering the ship today? Let's find out!
-		currentWorkspace: null, // The active hub for all our local projects.
-		workspaces: [], // A collection of all the workspaces we have access to.
-		view: 'board', // Board view is king for at-a-glance status.
-		calendarDate: new Date(), // Where are we in time? 
-		placeholders: [], // Some inspiration for when users are staring at a blank slate.
-		// The core data engine:
-		categories: [], // Grouping headers (Economics, History, etc.)
-		events: [], // The main projects - formerly "trips" in Cloud Hat, but now "events".
-		eventItems: [], // The individual tasks that make everything happen.
-		assignments: [], // Who is doing what?
-		currentEvent: null,
-		currentEventItems: [],
-		currentEventAssignments: [],
-		editingItem: null,
-		shouldRefreshBoard: false,
-		lastUpdateSeen: null,
-		isUpdateAvailable: false,
-		pollTimer: null,
-		pendingCelebration: false // To make sure the confetti pops.
-	},
+    // --- The Brain of Practica ---
+    // This object holds all our state, rendering logic, and API interactions.
+    // Practica is a fork of my tool called Cloud Hat, so this is sort of an odd mix of OG stuff and bolt-ons.
+    state: {
+        user: null, // Who's steering the ship today? Let's find out!
+        currentWorkspace: null, // The active hub for all our local projects.
+        workspaces: [], // A collection of all the workspaces we have access to.
+        view: 'board', // Board view is king for at-a-glance status.
+        calendarDate: new Date(), // Where are we in time? 
+        placeholders: [], // Some inspiration for when users are staring at a blank slate.
+        // The core data engine:
+        categories: [], // Grouping headers (Economics, History, etc.)
+        events: [], // The main projects - formerly "trips" in Cloud Hat, but now "events".
+        eventItems: [], // The individual tasks that make everything happen.
+        assignments: [], // Who is doing what?
+        currentEvent: null,
+        currentEventItems: [],
+        currentEventAssignments: [],
+        editingItem: null,
+        shouldRefreshBoard: false,
+        lastUpdateSeen: null,
+        isUpdateAvailable: false,
+        pollTimer: null,
+        pendingCelebration: false // To make sure the confetti pops.
+    },
 
-	init: async () => {
-		console.log("Practica initializing...");
+    init: async () => {
+        console.log("Practica initializing...");
 
-		// Load saved theme preference
-		if (localStorage.getItem('practica_theme') === 'dark') {
-			document.documentElement.classList.add('dark-theme');
-		}
+        // Load saved theme preference
+        if (localStorage.getItem('practica_theme') === 'dark') {
+            document.documentElement.classList.add('dark-theme');
+        }
 
-		// Close modal on outside click
-		document.getElementById('modal-container').addEventListener('mousedown', function (e) {
-			if (e.target === this) {
-				App.closeModal();
-			}
-		});
+        // Close modal on outside click
+        document.getElementById('modal-container').addEventListener('mousedown', function (e) {
+            if (e.target === this) {
+                App.closeModal();
+            }
+        });
 
-		// Load fun placeholders
-		try {
-			const res = await fetch('placeholders.json');
-			App.state.placeholders = await res.json();
-		} catch (e) {
-			console.error("Failed to load placeholders:", e);
-			App.state.placeholders = ["Add a new item..."];
-		}
+        // Load fun placeholders
+        try {
+            const res = await fetch('placeholders.json');
+            App.state.placeholders = await res.json();
+        } catch (e) {
+            console.error("Failed to load placeholders:", e);
+            App.state.placeholders = ["Add a new item..."];
+        }
 
-		await App.checkAuth();
-		App.startPolling();
-	},
+        await App.checkAuth();
+        App.startPolling();
+    },
 
-	startPolling: () => {
-		if (App.state.pollTimer) clearInterval(App.state.pollTimer);
-		App.state.pollTimer = setInterval(async () => {
-			if (App.state.currentWorkspace && !App.state.isUpdateAvailable) {
-				const res = await App.api({
-					action: 'check_updates',
-					workspace_id: App.state.currentWorkspace.id,
-					last_updated: App.state.lastUpdateSeen
-				});
-				if (res.has_updates) {
-					App.state.isUpdateAvailable = true;
-					App.renderBoard();
-				}
-			}
-		}, 15000); // 15 seconds
-	},
+    startPolling: () => {
+        if (App.state.pollTimer) clearInterval(App.state.pollTimer);
+        App.state.pollTimer = setInterval(async () => {
+            if (App.state.currentWorkspace && !App.state.isUpdateAvailable) {
+                const res = await App.api({
+                    action: 'check_updates',
+                    workspace_id: App.state.currentWorkspace.id,
+                    last_updated: App.state.lastUpdateSeen
+                });
+                if (res.has_updates) {
+                    App.state.isUpdateAvailable = true;
+                    App.renderBoard();
+                }
+            }
+        }, 15000); // 15 seconds
+    },
 
-	// Helpers
-	formatTime: (timeStr) => {
-		if (!timeStr) return '';
-		const [h, m] = timeStr.split(':');
-		let hours = parseInt(h, 10);
-		const ampm = hours >= 12 ? 'PM' : 'AM';
-		hours = hours % 12;
-		hours = hours ? hours : 12;
-		return `${hours}:${m} ${ampm}`;
-	},
-	getUserAvatar: (username) => {
-		if (!username) return { icon: 'fa-user', color: '#999' };
-		const icons = ['fa-cat', 'fa-dog', 'fa-hippo', 'fa-otter', 'fa-frog', 'fa-kiwi-bird', 'fa-fish', 'fa-dove', 'fa-dragon', 'fa-horse'];
-		const colors = ['#f4a261', '#2a9d8f', '#e9c46a', '#e76f51', '#264653', '#8ab17d', '#b56576', '#a8dadc', '#457b9d', '#1d3557'];
+    // Helpers
+    formatTime: (timeStr) => {
+        if (!timeStr) return '';
+        const [h, m] = timeStr.split(':');
+        let hours = parseInt(h, 10);
+        const ampm = hours >= 12 ? 'PM' : 'AM';
+        hours = hours % 12;
+        hours = hours ? hours : 12;
+        return `${hours}:${m} ${ampm}`;
+    },
+    getUserAvatar: (username) => {
+        if (!username) return { icon: 'fa-user', color: '#999' };
+        const icons = ['fa-cat', 'fa-dog', 'fa-hippo', 'fa-otter', 'fa-frog', 'fa-kiwi-bird', 'fa-fish', 'fa-dove', 'fa-dragon', 'fa-horse'];
+        const colors = ['#f4a261', '#2a9d8f', '#e9c46a', '#e76f51', '#264653', '#8ab17d', '#b56576', '#a8dadc', '#457b9d', '#1d3557'];
 
-		let hash = 0;
-		for (let i = 0; i < username.length; i++) {
-			hash = username.charCodeAt(i) + ((hash << 5) - hash);
-		}
+        let hash = 0;
+        for (let i = 0; i < username.length; i++) {
+            hash = username.charCodeAt(i) + ((hash << 5) - hash);
+        }
 
-		const index = Math.abs(hash);
-		return {
-			icon: icons[index % icons.length],
-			color: colors[index % colors.length]
-		};
-	},
+        const index = Math.abs(hash);
+        return {
+            icon: icons[index % icons.length],
+            color: colors[index % colors.length]
+        };
+    },
 
-	// API Interactions
-	api: async (data) => {
-		try {
-			const controller = new AbortController();
-			const id = setTimeout(() => controller.abort(), 10000); // Increased to 10s for reliability
+    // API Interactions
+    api: async (data) => {
+        try {
+            const controller = new AbortController();
+            const id = setTimeout(() => controller.abort(), 10000); // Increased to 10s for reliability
 
-			const response = await fetch('api.php', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(data),
-				signal: controller.signal
-			});
-			clearTimeout(id);
-			const text = await response.text();
+            const response = await fetch('api.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data),
+                signal: controller.signal
+            });
+            clearTimeout(id);
+            const text = await response.text();
 
-			try {
-				const json = JSON.parse(text);
-				if (json.code === 409) {
-					Swal.fire({
-						title: 'Conflict Detected',
-						text: json.error || 'Someone else modified this while you were editing.',
-						icon: 'warning',
-						confirmButtonText: 'Reload Data',
-						showCancelButton: true
-					}).then((result) => {
-						if (result.isConfirmed && App.state.currentWorkspace) {
-							App.openWorkspace(App.state.currentWorkspace.id);
-						}
-					});
-				}
-				return json;
-			} catch (e) {
-				console.error("API Error (Non-JSON):", text);
-				return { error: "Server Error: " + text.substring(0, 100) };
-			}
-		} catch (error) {
-			console.error("API Error:", error);
-			return { error: "Network error or timeout" };
-		}
-	},
+            try {
+                const json = JSON.parse(text);
+                if (json.code === 409) {
+                    Swal.fire({
+                        title: 'Conflict Detected',
+                        text: json.error || 'Someone else modified this while you were editing.',
+                        icon: 'warning',
+                        confirmButtonText: 'Reload Data',
+                        showCancelButton: true
+                    }).then((result) => {
+                        if (result.isConfirmed && App.state.currentWorkspace) {
+                            App.openWorkspace(App.state.currentWorkspace.id);
+                        }
+                    });
+                }
+                return json;
+            } catch (e) {
+                console.error("API Error (Non-JSON):", text);
+                return { error: "Server Error: " + text.substring(0, 100) };
+            }
+        } catch (error) {
+            console.error("API Error:", error);
+            return { error: "Network error or timeout" };
+        }
+    },
 
-	// Authentication
-	checkAuth: async () => {
-		const res = await App.api({ action: 'check_auth' });
-		if (res.authenticated) {
-			App.state.user = res.user;
-			App.loadWorkspaces(); // Load workspaces after auth
-			App.updateNav();
-		} else {
-			App.renderLogin();
-		}
-	},
+    // Authentication
+    checkAuth: async () => {
+        const res = await App.api({ action: 'check_auth' });
+        if (res.authenticated) {
+            App.state.user = res.user;
+            App.loadWorkspaces(); // Load workspaces after auth
+            App.updateNav();
+        } else {
+            App.renderLogin();
+        }
+    },
 
-	login: async (username, password) => {
-		const res = await App.api({ action: 'login', username, password });
-		if (res.success) {
-			App.state.user = res.user;
-			App.loadWorkspaces();
-			App.updateNav();
-		} else {
-			alert(res.error || "Login failed");
-		}
-	},
+    login: async (username, password) => {
+        const res = await App.api({ action: 'login', username, password });
+        if (res.success) {
+            App.state.user = res.user;
+            App.loadWorkspaces();
+            App.updateNav();
+        } else {
+            alert(res.error || "Login failed");
+        }
+    },
 
-	register: async (username, password, first_name, last_name) => {
-		const res = await App.api({ action: 'register', username, password, first_name, last_name });
-		if (res.success) {
-			App.state.user = res.user;
-			App.loadWorkspaces();
-			App.updateNav();
-		} else {
-			alert(res.error || "Registration failed");
-		}
-	},
+    register: async (username, password, first_name, last_name) => {
+        const res = await App.api({ action: 'register', username, password, first_name, last_name });
+        if (res.success) {
+            App.state.user = res.user;
+            App.loadWorkspaces();
+            App.updateNav();
+        } else {
+            alert(res.error || "Registration failed");
+        }
+    },
 
-	logout: async () => {
-		await App.api({ action: 'logout' });
-		App.state.user = null;
-		App.state.currentWorkspace = null;
-		App.state.workspaces = [];
-		App.renderLogin();
-		App.updateNav();
-	},
+    logout: async () => {
+        await App.api({ action: 'logout' });
+        App.state.user = null;
+        App.state.currentWorkspace = null;
+        App.state.workspaces = [];
+        App.renderLogin();
+        App.updateNav();
+    },
 
-	// --- Workspace Logic ---
-	loadWorkspaces: async () => {
-		const res = await App.api({ action: 'get_workspaces' });
-		if (res.workspaces) {
-			App.state.workspaces = res.workspaces;
-			App.renderDashboard();
-		}
-	},
+    // --- Workspace Logic ---
+    loadWorkspaces: async () => {
+        const res = await App.api({ action: 'get_workspaces' });
+        if (res.workspaces) {
+            App.state.workspaces = res.workspaces;
+            App.renderDashboard();
+        }
+    },
 
-	submitCreateWorkspace: async () => {
-		const name = document.getElementById('new-workspace-name').value;
-		if (!name) return;
+    submitCreateWorkspace: async () => {
+        const name = document.getElementById('new-workspace-name').value;
+        if (!name) return;
 
-		const res = await App.api({ action: 'create_workspace', name });
-		if (res.success) {
-			App.closeModal();
-			App.loadWorkspaces();
-		} else {
-			alert(res.error || "Failed to create workspace");
-		}
-	},
+        const res = await App.api({ action: 'create_workspace', name });
+        if (res.success) {
+            App.closeModal();
+            App.loadWorkspaces();
+        } else {
+            alert(res.error || "Failed to create workspace");
+        }
+    },
 
-	openWorkspace: async (id) => {
-		console.log("Practica Power: Opening workspace ID:", id);
-		// We loose-check (==) here to be safe with string/number IDs from the URL or state.
-		const workspace = App.state.workspaces.find(w => w.id == id);
-		if (!workspace) {
-			console.error("Workspace lost at sea:", id, App.state.workspaces);
-			alert("Error: Workspace not found locally.");
-			return;
-		}
-		App.state.currentWorkspace = workspace;
+    openWorkspace: async (id) => {
+        console.log("Practica Power: Opening workspace ID:", id);
+        // We loose-check (==) here to be safe with string/number IDs from the URL or state.
+        const workspace = App.state.workspaces.find(w => w.id == id);
+        if (!workspace) {
+            console.error("Workspace lost at sea:", id, App.state.workspaces);
+            alert("Error: Workspace not found locally.");
+            return;
+        }
+        App.state.currentWorkspace = workspace;
 
-		// Time to load the treasure chest of data from the server.
-		try {
-			const res = await App.api({ action: 'get_workspace_details', workspace_id: id });
-			console.log("Workspace details loaded:", res);
+        // Time to load the treasure chest of data from the server.
+        try {
+            const res = await App.api({ action: 'get_workspace_details', workspace_id: id });
+            console.log("Workspace details loaded:", res);
 
-			if (res.error) {
-				alert("API Error: " + res.error);
-				return;
-			}
+            if (res.error) {
+                alert("API Error: " + res.error);
+                return;
+            }
 
-			App.state.categories = res.categories || [];
-			App.state.events = res.events || [];
-			App.state.eventItems = res.event_items || [];
-			App.state.assignments = res.assignments || [];
-			App.state.workspaceMembers = res.members || [];
-			App.state.activityLog = res.activity_log || [];
+            App.state.categories = res.categories || [];
+            App.state.events = res.events || [];
+            App.state.eventItems = res.event_items || [];
+            App.state.assignments = res.assignments || [];
+            App.state.workspaceMembers = res.members || [];
+            App.state.activityLog = res.activity_log || [];
 
-			// Update workspace details from server (to get latest notes)
-			if (res.workspace) {
-				App.state.currentWorkspace = res.workspace;
-				App.state.lastUpdateSeen = res.workspace.updated_at;
-				App.state.isUpdateAvailable = false;
-			}
+            // Update workspace details from server (to get latest notes)
+            if (res.workspace) {
+                App.state.currentWorkspace = res.workspace;
+                App.state.lastUpdateSeen = res.workspace.updated_at;
+                App.state.isUpdateAvailable = false;
+            }
 
-			App.renderBoard();
-		} catch (e) {
-			console.error("Error opening workspace:", e);
-			alert("Error opening workspace: " + e.message);
-		}
-	},
+            App.renderBoard();
+        } catch (e) {
+            console.error("Error opening workspace:", e);
+            alert("Error opening workspace: " + e.message);
+        }
+    },
 
-	createCategory: async () => {
-		const name = prompt("Category Name:");
-		if (!name) return;
+    createCategory: async () => {
+        const name = prompt("Category Name:");
+        if (!name) return;
 
-		const res = await App.api({
-			action: 'create_category',
-			workspace_id: App.state.currentWorkspace.id,
-			name: name
-		});
+        const res = await App.api({
+            action: 'create_category',
+            workspace_id: App.state.currentWorkspace.id,
+            name: name
+        });
 
-		if (res.success) {
-			App.openWorkspace(App.state.currentWorkspace.id); // Reload
-		}
-	},
+        if (res.success) {
+            App.openWorkspace(App.state.currentWorkspace.id); // Reload
+        }
+    },
 
-	createEvent: async (categoryId) => {
-		const title = prompt("Event Title (e.g. Grad Visit Day):");
-		if (!title) return;
+    createEvent: async (categoryId) => {
+        const title = prompt("Event Title (e.g. Grad Visit Day):");
+        if (!title) return;
 
-		const res = await App.api({
-			action: 'create_event',
-			category_id: categoryId,
-			title: title
-		});
+        const res = await App.api({
+            action: 'create_event',
+            category_id: categoryId,
+            title: title
+        });
 
-		if (res.success) {
-			App.openWorkspace(App.state.currentWorkspace.id); // Reload
-		}
-	},
+        if (res.success) {
+            App.openWorkspace(App.state.currentWorkspace.id); // Reload
+        }
+    },
 
-	// Rendering
-	renderLogin: () => {
-		const app = document.getElementById('app');
-		app.innerHTML = `
+    // Rendering
+    renderLogin: () => {
+        const app = document.getElementById('app');
+        app.innerHTML = `
 			<div class="auth-container">
 				<div class="auth-hero hidden-mobile">
 					<div class="auth-hero-content">
@@ -309,11 +309,11 @@ const App = {
 				</div>
 			</div>
 		`;
-	},
+    },
 
-	renderRegister: () => {
-		const app = document.getElementById('app');
-		app.innerHTML = `
+    renderRegister: () => {
+        const app = document.getElementById('app');
+        app.innerHTML = `
 			<div class="auth-container">
 				<div class="auth-hero hidden-mobile">
 					<div class="auth-hero-content">
@@ -374,12 +374,12 @@ const App = {
 				</div>
 			</div>
 		`;
-	},
+    },
 
-	renderDashboard: () => {
-		const app = document.getElementById('app');
+    renderDashboard: () => {
+        const app = document.getElementById('app');
 
-		let workspaceHtml = App.state.workspaces.map(w => `
+        let workspaceHtml = App.state.workspaces.map(w => `
 			<div class="card workspace-card existing" onclick="App.openWorkspace(${w.id})">
 				<i class="fa-solid fa-calendar-days" style="font-size: 2rem; color: var(--color-sea-dark); margin-bottom: 10px;"></i>
 				<h3>${w.name}</h3>
@@ -387,7 +387,7 @@ const App = {
 			</div>
 		`).join('');
 
-		app.innerHTML = `
+        app.innerHTML = `
 			<h2>My Workspaces</h2>
 			<div class="workspace-list">
 				<div class="card workspace-card" onclick="App.openCreateWorkspaceModal()">
@@ -397,69 +397,69 @@ const App = {
 				${workspaceHtml}
 			</div>
 		`;
-		App.updateNav();
-	},
+        App.updateNav();
+    },
 
-	renderBoard: () => {
-		const app = document.getElementById('app');
-		const ws = App.state.currentWorkspace;
-		const today = new Date().toISOString().split('T')[0];
+    renderBoard: () => {
+        const app = document.getElementById('app');
+        const ws = App.state.currentWorkspace;
+        const today = new Date().toISOString().split('T')[0];
 
-		// Filter Logic: Active events have end_date >= today OR no end_date
-		const activeEvents = App.state.events.filter(t => !t.end_date || t.end_date >= today);
-		const allItems = App.state.eventItems || []; // Items fetched from API
+        // Filter Logic: Active events have end_date >= today OR no end_date
+        const activeEvents = App.state.events.filter(t => !t.end_date || t.end_date >= today);
+        const allItems = App.state.eventItems || []; // Items fetched from API
 
-		let columnsHtml = App.state.categories.map(cat => {
-			const events = activeEvents.filter(t => t.event_category_id === cat.id);
-			// Sort by sort_order
-			events.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+        let columnsHtml = App.state.categories.map(cat => {
+            const events = activeEvents.filter(t => t.event_category_id === cat.id);
+            // Sort by sort_order
+            events.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
 
-			const eventsHtml = events.map(t => {
-				// Get items for this event and sort chronologically
-				let items = allItems.filter(i => i.event_id === t.id);
-				items.sort((a, b) => {
-					// Primary sort: User's manual sort_order
-					const orderA = a.sort_order !== undefined && a.sort_order !== null ? a.sort_order : 9999;
-					const orderB = b.sort_order !== undefined && b.sort_order !== null ? b.sort_order : 9999;
-					if (orderA !== orderB) return orderA - orderB;
+            const eventsHtml = events.map(t => {
+                // Get items for this event and sort chronologically
+                let items = allItems.filter(i => i.event_id === t.id);
+                items.sort((a, b) => {
+                    // Primary sort: User's manual sort_order
+                    const orderA = a.sort_order !== undefined && a.sort_order !== null ? a.sort_order : 9999;
+                    const orderB = b.sort_order !== undefined && b.sort_order !== null ? b.sort_order : 9999;
+                    if (orderA !== orderB) return orderA - orderB;
 
-					// Secondary sort: Dates
-					if (a.item_date && b.item_date) return a.item_date.localeCompare(b.item_date);
-					if (a.item_date) return -1; // Dates come first
-					if (b.item_date) return 1;
-					return 0;
-				});
+                    // Secondary sort: Dates
+                    if (a.item_date && b.item_date) return a.item_date.localeCompare(b.item_date);
+                    if (a.item_date) return -1; // Dates come first
+                    if (b.item_date) return 1;
+                    return 0;
+                });
 
-				const limit = t.board_items_limit !== undefined && t.board_items_limit !== null ? parseInt(t.board_items_limit, 10) : 3;
-				const itemsToShow = items.slice(0, limit);
-				const remaining = items.length - itemsToShow.length;
+                const limit = t.board_items_limit !== undefined && t.board_items_limit !== null ? parseInt(t.board_items_limit, 10) : 3;
+                const itemsToShow = items.slice(0, limit);
+                const remaining = items.length - itemsToShow.length;
 
-				const itemsHtml = itemsToShow.map(i => {
-					const isFlagged = (i.is_flagged == 1 || i.is_flagged === true);
-					const isDone = (i.is_done == 1 || i.is_done === true);
-					const isDivider = (i.is_divider == 1 || i.is_divider === true);
+                const itemsHtml = itemsToShow.map(i => {
+                    const isFlagged = (i.is_flagged == 1 || i.is_flagged === true);
+                    const isDone = (i.is_done == 1 || i.is_done === true);
+                    const isDivider = (i.is_divider == 1 || i.is_divider === true);
 
-					if (isDivider) {
-						return `
+                    if (isDivider) {
+                        return `
 						<div class="mini-event-divider">
 							${i.title}
 						</div>
 						`;
-					}
+                    }
 
-					// Format date as MM/DD if present
-					let dateStr = '';
-					if (i.item_date) {
-						const startTime = App.formatTime(i.start_time);
-						const endTime = App.formatTime(i.end_time);
-						let range = '';
-						if (i.end_date || endTime) {
-							range = ' - ' + (i.end_date ? i.end_date.slice(5) : '') + (endTime ? ' ' + endTime : '');
-						}
-						dateStr = `<span style="font-size: 0.7em; color: var(--color-sea-blue); margin-right: 4px;">${i.item_date.slice(5)}${startTime ? ' ' + startTime : ''}${range}</span>`;
-					}
+                    // Format date as MM/DD if present
+                    let dateStr = '';
+                    if (i.item_date) {
+                        const startTime = App.formatTime(i.start_time);
+                        const endTime = App.formatTime(i.end_time);
+                        let range = '';
+                        if (i.end_date || endTime) {
+                            range = ' - ' + (i.end_date ? i.end_date.slice(5) : '') + (endTime ? ' ' + endTime : '');
+                        }
+                        dateStr = `<span style="font-size: 0.7em; color: var(--color-sea-blue); margin-right: 4px;">${i.item_date.slice(5)}${startTime ? ' ' + startTime : ''}${range}</span>`;
+                    }
 
-					return `
+                    return `
 					<div class="mini-event-item ${isDone ? 'is-done' : ''}" style="display: flex; flex-direction: column; margin-bottom: 4px;">
 						<div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 4px;">
 							<div style="display: flex; align-items: center; flex: 1; min-width: 0; flex-wrap: wrap;">
@@ -467,10 +467,10 @@ const App = {
 								<span class="mini-item-title" style="font-weight: 500; margin-right: 6px;">${i.title}</span>
 								<div class="mini-item-assignees" style="display: flex; flex-wrap: wrap; gap: 3px; align-items: center;">
 									${(App.state.assignments || []).filter(a => a.item_id == i.id).map(a => {
-						const avatar = App.getUserAvatar(a.username);
-						const name = a.first_name || a.username;
-						return `<div class="assignment-pill mini" title="${a.first_name} ${a.last_name}"><div class="avatar-circle" style="background-color: ${avatar.color};"><i class="fa-solid ${avatar.icon}"></i></div><span>${name}</span></div>`;
-					}).join('')}
+                        const avatar = App.getUserAvatar(a.username);
+                        const name = a.first_name || a.username;
+                        return `<div class="assignment-pill mini" title="${a.first_name} ${a.last_name}"><div class="avatar-circle" style="background-color: ${avatar.color};"><i class="fa-solid ${avatar.icon}"></i></div><span>${name}</span></div>`;
+                    }).join('')}
 								</div>
 							</div>
 							<div class="mini-item-icons" style="display: flex; align-items: center; gap: 4px; color: var(--color-text-light); flex-shrink: 0; margin-top: 2px;">
@@ -481,18 +481,18 @@ const App = {
 						${(t.show_details == 1 && i.subtitle) ? `<div class="mini-item-details" style="margin-top: 0px; margin-bottom: 8px; color: #777; font-size: 0.75rem; line-height: 1.2;">${i.subtitle}</div>` : ''}
 					</div>
 					`;
-				}).join('');
+                }).join('');
 
-				const startTime = App.formatTime(t.start_time);
-				const endTime = App.formatTime(t.end_time);
-				let dateRange = t.start_date ? `${t.start_date}${startTime ? ' ' + startTime : ''}` : '';
-				if (t.end_date || endTime) {
-					dateRange += ` - ${t.end_date || ''}${endTime ? ' ' + endTime : ''}`;
-				}
+                const startTime = App.formatTime(t.start_time);
+                const endTime = App.formatTime(t.end_time);
+                let dateRange = t.start_date ? `${t.start_date}${startTime ? ' ' + startTime : ''}` : '';
+                if (t.end_date || endTime) {
+                    dateRange += ` - ${t.end_date || ''}${endTime ? ' ' + endTime : ''}`;
+                }
 
-				// The Event Card: Our primary unit of organization. 
-				// We're keeping the header Blue to match the UC Davis aesthetic.
-				return `
+                // The Event Card: Our primary unit of organization. 
+                // We're keeping the header Blue to match the UC Davis aesthetic.
+                return `
 					<div class="card event-card" draggable="true" ondragstart="App.drag(event, ${t.id})" onclick="App.openEvent(${t.id})" id="event-${t.id}">
 						<h4 style="color: var(--color-sea-blue); margin-bottom: 5px;">${t.title}</h4>
 					${t.location ? `<div class="event-meta"><i class="fa-solid fa-location-dot"></i> ${t.location}</div>` : ''}
@@ -502,9 +502,9 @@ const App = {
 					${remaining > 0 ? `<div class="mini-items-more">+${remaining} more</div>` : ''}
 				</div>
 	`;
-			}).join('');
+            }).join('');
 
-			return `
+            return `
 	<div class="category-column" draggable="true" ondragstart="App.dragCategory(event, ${cat.id})" id="cat-${cat.id}">
 				<div class="column-header" style="cursor: grab;">
 					<span>${cat.name} <span style="font-weight: normal; color: #777; font-size: 0.9em;">(${events.length})</span></span>
@@ -516,14 +516,14 @@ const App = {
 				<button class="btn btn-secondary btn-sm" style="margin-top: 10px; width: 100%;" onclick="App.createEvent(${cat.id})"><i class="fa-solid fa-plus"></i> Add Event</button>
 			</div>
 	`;
-		}).join('');
+        }).join('');
 
-		const facepileHtml = (App.state.workspaceMembers || []).map(m => {
-			const avatar = App.getUserAvatar(m.username);
-			return `<div class="avatar-circle" style="background-color: ${avatar.color};" title="${m.username}"><i class="fa-solid ${avatar.icon}"></i></div>`;
-		}).join('');
+        const facepileHtml = (App.state.workspaceMembers || []).map(m => {
+            const avatar = App.getUserAvatar(m.username);
+            return `<div class="avatar-circle" style="background-color: ${avatar.color};" title="${m.username}"><i class="fa-solid ${avatar.icon}"></i></div>`;
+        }).join('');
 
-		app.innerHTML = `
+        app.innerHTML = `
 			${App.state.isUpdateAvailable ? `
 				<div class="update-banner" id="update-banner">
 					<i class="fa-solid fa-sync fa-spin"></i> New updates available in this workspace. 
@@ -561,72 +561,72 @@ const App = {
 
 			${App.state.view === 'calendar' ? App.renderCalendar() : (App.state.view === 'my-work' ? App.renderMyWorkView() : App.renderBoardContent())}
 `;
-		setTimeout(() => window.scrollTo(0, 0), 10); // Prevent browser from maintaining previous scroll position and wait for DOM layout
+        setTimeout(() => window.scrollTo(0, 0), 10); // Prevent browser from maintaining previous scroll position and wait for DOM layout
 
-		if (App.state.pendingCelebration) {
-			App.state.pendingCelebration = false;
-			setTimeout(() => {
-				confetti({
-					particleCount: 250,
-					spread: 80,
-					origin: { y: 0.6 },
-					zIndex: 10000,
-					colors: ['#002851', '#DAAA00']
-				});
-			}, 100);
-		}
+        if (App.state.pendingCelebration) {
+            App.state.pendingCelebration = false;
+            setTimeout(() => {
+                confetti({
+                    particleCount: 250,
+                    spread: 80,
+                    origin: { y: 0.6 },
+                    zIndex: 10000,
+                    colors: ['#002851', '#DAAA00']
+                });
+            }, 100);
+        }
 
-		App.updateNav();
-	},
+        App.updateNav();
+    },
 
-	setView: (view) => {
-		App.state.view = view;
-		App.renderBoard();
-	},
+    setView: (view) => {
+        App.state.view = view;
+        App.renderBoard();
+    },
 
-	renderBoardContent: () => {
-		const today = new Date().toISOString().split('T')[0];
-		const activeEvents = App.state.events.filter(t => !t.end_date || t.end_date >= today);
-		const allItems = App.state.eventItems || [];
+    renderBoardContent: () => {
+        const today = new Date().toISOString().split('T')[0];
+        const activeEvents = App.state.events.filter(t => !t.end_date || t.end_date >= today);
+        const allItems = App.state.eventItems || [];
 
-		const columnsHtml = App.state.categories.map(cat => {
-			const events = activeEvents.filter(t => t.event_category_id === cat.id);
-			events.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+        const columnsHtml = App.state.categories.map(cat => {
+            const events = activeEvents.filter(t => t.event_category_id === cat.id);
+            events.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
 
-			const eventsHtml = events.map(t => {
-				let items = allItems.filter(i => i.event_id === t.id);
-				items.sort((a, b) => {
-					const orderA = a.sort_order ?? 9999;
-					const orderB = b.sort_order ?? 9999;
-					if (orderA !== orderB) return orderA - orderB;
-					if (a.item_date && b.item_date) return a.item_date.localeCompare(b.item_date);
-					if (a.item_date) return -1;
-					if (b.item_date) return 1;
-					return 0;
-				});
+            const eventsHtml = events.map(t => {
+                let items = allItems.filter(i => i.event_id === t.id);
+                items.sort((a, b) => {
+                    const orderA = a.sort_order ?? 9999;
+                    const orderB = b.sort_order ?? 9999;
+                    if (orderA !== orderB) return orderA - orderB;
+                    if (a.item_date && b.item_date) return a.item_date.localeCompare(b.item_date);
+                    if (a.item_date) return -1;
+                    if (b.item_date) return 1;
+                    return 0;
+                });
 
-				const limit = t.board_items_limit ?? 3;
-				const itemsToShow = items.slice(0, limit);
-				const remaining = items.length - itemsToShow.length;
+                const limit = t.board_items_limit ?? 3;
+                const itemsToShow = items.slice(0, limit);
+                const remaining = items.length - itemsToShow.length;
 
-				const itemsHtml = itemsToShow.map(i => {
-					const isFlagged = !!(i.is_flagged == 1 || i.is_flagged === true);
-					const isDone = !!(i.is_done == 1 || i.is_done === true);
-					if (i.is_divider == 1) return `<div class="mini-event-divider">${i.title}</div>`;
+                const itemsHtml = itemsToShow.map(i => {
+                    const isFlagged = !!(i.is_flagged == 1 || i.is_flagged === true);
+                    const isDone = !!(i.is_done == 1 || i.is_done === true);
+                    if (i.is_divider == 1) return `<div class="mini-event-divider">${i.title}</div>`;
 
-					// Format date as MM/DD if present (Restore original board item logic)
-					let dateStr = '';
-					if (i.item_date) {
-						const startTime = App.formatTime(i.start_time);
-						const endTime = App.formatTime(i.end_time);
-						let range = '';
-						if (i.end_date || endTime) {
-							range = ' - ' + (i.end_date ? i.end_date.slice(5) : '') + (endTime ? ' ' + endTime : '');
-						}
-						dateStr = `<span style="font-size: 0.7em; color: var(--color-sea-blue); margin-right: 4px;">${i.item_date.slice(5)}${startTime ? ' ' + startTime : ''}${range}</span>`;
-					}
+                    // Format date as MM/DD if present (Restore original board item logic)
+                    let dateStr = '';
+                    if (i.item_date) {
+                        const startTime = App.formatTime(i.start_time);
+                        const endTime = App.formatTime(i.end_time);
+                        let range = '';
+                        if (i.end_date || endTime) {
+                            range = ' - ' + (i.end_date ? i.end_date.slice(5) : '') + (endTime ? ' ' + endTime : '');
+                        }
+                        dateStr = `<span style="font-size: 0.7em; color: var(--color-sea-blue); margin-right: 4px;">${i.item_date.slice(5)}${startTime ? ' ' + startTime : ''}${range}</span>`;
+                    }
 
-					return `
+                    return `
 						<div class="mini-event-item ${isDone ? 'is-done' : ''}" style="display: flex; flex-direction: column; margin-bottom: 4px;" onclick="App.openEvent(${t.id})">
 							<div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 4px;">
 								<div style="display: flex; align-items: center; flex: 1; min-width: 0; flex-wrap: wrap;">
@@ -634,10 +634,10 @@ const App = {
 									<span class="mini-item-title" style="font-weight: 500; margin-right: 6px;">${i.title}</span>
 									<div class="mini-item-assignees" style="display: flex; flex-wrap: wrap; gap: 3px; align-items: center;">
 										${(App.state.assignments || []).filter(a => a.item_id == i.id).map(a => {
-						const avatar = App.getUserAvatar(a.username);
-						const name = a.first_name || a.username;
-						return `<div class="assignment-pill mini" title="${a.first_name} ${a.last_name}"><div class="avatar-circle" style="background-color: ${avatar.color};"><i class="fa-solid ${avatar.icon}"></i></div><span>${name}</span></div>`;
-					}).join('')}
+                        const avatar = App.getUserAvatar(a.username);
+                        const name = a.first_name || a.username;
+                        return `<div class="assignment-pill mini" title="${a.first_name} ${a.last_name}"><div class="avatar-circle" style="background-color: ${avatar.color};"><i class="fa-solid ${avatar.icon}"></i></div><span>${name}</span></div>`;
+                    }).join('')}
 									</div>
 								</div>
 								<div class="mini-item-icons" style="display: flex; align-items: center; gap: 4px; color: var(--color-text-light); flex-shrink: 0; margin-top: 2px;">
@@ -648,11 +648,11 @@ const App = {
 							${(t.show_details == 1 || t.show_details === true) && i.subtitle ? `<div class="mini-item-details" style="font-size: 0.75rem; color: #888; margin-top: 2px; padding-left: 0; line-height: 1.3; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;">${i.subtitle}</div>` : ''}
 						</div>
 					`;
-				}).join('');
+                }).join('');
 
-				const dateRange = (t.start_date || t.end_date) ? `${t.start_date || ''}${t.end_date ? ' to ' + t.end_date : ''}` : '';
+                const dateRange = (t.start_date || t.end_date) ? `${t.start_date || ''}${t.end_date ? ' to ' + t.end_date : ''}` : '';
 
-				return `
+                return `
 				<div class="event-card" onclick="App.openEvent(${t.id})">
 					<div class="event-title">${t.title}</div>
 					${dateRange ? `<div class="event-meta"><i class="fa-regular fa-calendar"></i> ${dateRange}</div>` : ''}
@@ -661,9 +661,9 @@ const App = {
 					${remaining > 0 ? `<div class="mini-items-more">+${remaining} more</div>` : ''}
 				</div>
 				`;
-			}).join('');
+            }).join('');
 
-			return `
+            return `
 			<div class="category-column" draggable="true" ondragstart="App.dragCategory(event, ${cat.id})" id="cat-${cat.id}">
 				<div class="column-header" style="cursor: grab;">
 					<span>${cat.name} <span style="font-weight: normal; color: #777; font-size: 0.9em;">(${events.length})</span></span>
@@ -675,57 +675,57 @@ const App = {
 				<button class="btn btn-secondary btn-sm" style="margin-top: 10px; width: 100%;" onclick="App.createEvent(${cat.id})"><i class="fa-solid fa-plus"></i> Add Event</button>
 			</div>
 			`;
-		}).join('');
+        }).join('');
 
-		return `
+        return `
 		<div class="board-container" ondragover="App.allowDropCategory(event)" ondrop="App.dropCategory(event)">
 			${columnsHtml}
 			${App.state.categories.length === 0 ? '<div style="padding: 20px; color: var(--color-text-light);">No categories yet. Click "New Category" to start!</div>' : ''}
 		</div>
 		`;
-	},
+    },
 
-	renderMyWorkView: () => {
-		const userId = App.state.user.id;
-		const myItemIds = (App.state.assignments || [])
-			.filter(a => a.user_id == userId)
-			.map(a => a.item_id);
+    renderMyWorkView: () => {
+        const userId = App.state.user.id;
+        const myItemIds = (App.state.assignments || [])
+            .filter(a => a.user_id == userId)
+            .map(a => a.item_id);
 
-		if (myItemIds.length === 0) {
-			return `
+        if (myItemIds.length === 0) {
+            return `
 			<div class="my-work-no-tasks">
 				<i class="fa-solid fa-mug-hot"></i>
 				<h3>You're all caught up!</h3>
 				<p>No items assigned to you in this workspace.</p>
 			</div>
 			`;
-		}
+        }
 
-		const myItems = (App.state.eventItems || [])
-			.filter(i => myItemIds.includes(i.id));
+        const myItems = (App.state.eventItems || [])
+            .filter(i => myItemIds.includes(i.id));
 
-		// Group items by event
-		const groups = {};
-		myItems.forEach(item => {
-			if (!groups[item.event_id]) {
-				const event = App.state.events.find(e => e.id == item.event_id);
-				const category = App.state.categories.find(c => c.id == event?.event_category_id);
-				groups[item.event_id] = {
-					event: event || { title: 'Unknown Event', id: item.event_id },
-					category: category || { name: 'Uncategorized' },
-					items: []
-				};
-			}
-			groups[item.event_id].items.push(item);
-		});
+        // Group items by event
+        const groups = {};
+        myItems.forEach(item => {
+            if (!groups[item.event_id]) {
+                const event = App.state.events.find(e => e.id == item.event_id);
+                const category = App.state.categories.find(c => c.id == event?.event_category_id);
+                groups[item.event_id] = {
+                    event: event || { title: 'Unknown Event', id: item.event_id },
+                    category: category || { name: 'Uncategorized' },
+                    items: []
+                };
+            }
+            groups[item.event_id].items.push(item);
+        });
 
-		const groupsHtml = Object.values(groups).map(group => {
-			const itemsHtml = group.items.map(i => {
-				const isFlagged = !!(i.is_flagged == 1 || i.is_flagged === true);
-				const isDone = !!(i.is_done == 1 || i.is_done === true);
-				const dateInfo = i.item_date ? `${i.item_date}${i.start_time ? ' ' + App.formatTime(i.start_time) : ''}` : '';
+        const groupsHtml = Object.values(groups).map(group => {
+            const itemsHtml = group.items.map(i => {
+                const isFlagged = !!(i.is_flagged == 1 || i.is_flagged === true);
+                const isDone = !!(i.is_done == 1 || i.is_done === true);
+                const dateInfo = i.item_date ? `${i.item_date}${i.start_time ? ' ' + App.formatTime(i.start_time) : ''}` : '';
 
-				return `
+                return `
 				<div class="my-work-item-row ${isDone ? 'is-done' : ''}">
 					<button class="btn-icon ${isDone ? 'done-active' : ''}" onclick="App.toggleDone(${i.id})">
 						<i class="fa-solid fa-check"></i>
@@ -743,9 +743,9 @@ const App = {
 					</div>
 				</div>
 				`;
-			}).join('');
+            }).join('');
 
-			return `
+            return `
 			<div class="my-work-event-group">
 				<div class="my-work-event-header">
 					<h3 onclick="App.openEvent(${group.event.id})">${group.category.name} – ${group.event.title}</h3>
@@ -756,73 +756,73 @@ const App = {
 				</div>
 			</div>
 			`;
-		}).join('');
+        }).join('');
 
-		return `
+        return `
 		<div class="my-work-container">
 			${groupsHtml}
 		</div>
 		`;
-	},
+    },
 
-	saveWorkspaceNotes: async (notes) => {
-		await App.api({
-			action: 'update_workspace',
-			workspace_id: App.state.currentWorkspace.id,
-			notes
-		});
-		App.state.currentWorkspace.notes = notes;
-	},
+    saveWorkspaceNotes: async (notes) => {
+        await App.api({
+            action: 'update_workspace',
+            workspace_id: App.state.currentWorkspace.id,
+            notes
+        });
+        App.state.currentWorkspace.notes = notes;
+    },
 
-	renderCalendar: () => {
-		const today = new Date();
-		const currentMonth = App.state.calendarDate || today;
-		const year = currentMonth.getFullYear();
-		const month = currentMonth.getMonth();
+    renderCalendar: () => {
+        const today = new Date();
+        const currentMonth = App.state.calendarDate || today;
+        const year = currentMonth.getFullYear();
+        const month = currentMonth.getMonth();
 
-		const firstDay = new Date(year, month, 1);
-		const lastDay = new Date(year, month + 1, 0);
+        const firstDay = new Date(year, month, 1);
+        const lastDay = new Date(year, month + 1, 0);
 
-		// Month Name
-		const monthName = currentMonth.toLocaleString('default', { month: 'long', year: 'numeric' });
+        // Month Name
+        const monthName = currentMonth.toLocaleString('default', { month: 'long', year: 'numeric' });
 
-		// Calendar Grid Generation
-		let daysHtml = '';
+        // Calendar Grid Generation
+        let daysHtml = '';
 
-		// Empty slots for days before start of month
-		for (let i = 0; i < firstDay.getDay(); i++) {
-			daysHtml += `<div class="calendar-day empty"></div>`;
-		}
+        // Empty slots for days before start of month
+        for (let i = 0; i < firstDay.getDay(); i++) {
+            daysHtml += `<div class="calendar-day empty"></div>`;
+        }
 
-		// Days of month
-		for (let d = 1; d <= lastDay.getDate(); d++) {
-			const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        // Days of month
+        for (let d = 1; d <= lastDay.getDate(); d++) {
+            const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 
-			// Find events active on this day
-			const eventsOnDay = App.state.events.filter(t => {
-				if (!t.start_date) return false;
-				if (!t.end_date) return t.start_date === dateStr;
-				return dateStr >= t.start_date && dateStr <= t.end_date;
-			});
+            // Find events active on this day
+            const eventsOnDay = App.state.events.filter(t => {
+                if (!t.start_date) return false;
+                if (!t.end_date) return t.start_date === dateStr;
+                return dateStr >= t.start_date && dateStr <= t.end_date;
+            });
 
-			const eventsHtml = eventsOnDay.map(t => {
-				// Determine if start, middle, or end of event for styling
-				let classes = 'course-bar';
-				if (t.start_date === dateStr) classes += ' start';
-				if (t.end_date === dateStr) classes += ' end';
+            const eventsHtml = eventsOnDay.map(t => {
+                // Determine if start, middle, or end of event for styling
+                let classes = 'course-bar';
+                if (t.start_date === dateStr) classes += ' start';
+                if (t.end_date === dateStr) classes += ' end';
 
-				return `<div class="${classes}" onclick="App.openEvent(${t.id})" title="${t.title}">${t.title}</div>`;
-			}).join('');
+                return `<div class="${classes}" onclick="App.openEvent(${t.id})" title="${t.title}">${t.title}</div>`;
+            }).join('');
 
-			daysHtml += `
+            daysHtml += `
 	<div class="calendar-day">
 					<div class="day-number">${d}</div>
 					<div class="day-events">${eventsHtml}</div>
 				</div>
 	`;
-		}
+        }
 
-		return `
+        return `
 	<div class="calendar-container">
 				<div class="calendar-header">
 					<button class="btn btn-sm btn-secondary" onclick="App.changeMonth(-1)"><i class="fa-solid fa-chevron-left"></i></button>
@@ -836,23 +836,23 @@ const App = {
 					${daysHtml}
 				</div>
 	`;
-	},
+    },
 
-	changeMonth: (delta) => {
-		const current = App.state.calendarDate || new Date();
-		App.state.calendarDate = new Date(current.getFullYear(), current.getMonth() + delta, 1);
-		App.renderBoard();
-	},
+    changeMonth: (delta) => {
+        const current = App.state.calendarDate || new Date();
+        App.state.calendarDate = new Date(current.getFullYear(), current.getMonth() + delta, 1);
+        App.renderBoard();
+    },
 
-	renderArchive: () => {
-		const app = document.getElementById('app');
-		const ws = App.state.currentWorkspace;
-		const today = new Date().toISOString().split('T')[0];
+    renderArchive: () => {
+        const app = document.getElementById('app');
+        const ws = App.state.currentWorkspace;
+        const today = new Date().toISOString().split('T')[0];
 
-		// Archived events have end_date < today
-		const archivedEvents = App.state.events.filter(t => t.end_date && t.end_date < today);
+        // Archived events have end_date < today
+        const archivedEvents = App.state.events.filter(t => t.end_date && t.end_date < today);
 
-		let eventsHtml = archivedEvents.map(t => `
+        let eventsHtml = archivedEvents.map(t => `
 	<div class="card event-card" onclick="App.openEvent(${t.id})" style="background: #f0f0f0; opacity: 0.8;">
 		<h4 style="color: var(--color-text-light); text-decoration: line-through;">${t.title}</h4>
 				${t.location ? `<div class="event-meta"><i class="fa-solid fa-location-dot"></i> ${t.location}</div>` : ''}
@@ -860,7 +860,7 @@ const App = {
 			</div>
 	`).join('');
 
-		app.innerHTML = `
+        app.innerHTML = `
 	<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
 				<h2><i class="fa-solid fa-box-archive"></i> ${ws.name} Archive</h2>
 				<button class="btn btn-secondary" onclick="App.renderBoard()"><i class="fa-solid fa-arrow-left"></i> Back to Board</button>
@@ -869,21 +869,21 @@ const App = {
 		${eventsHtml.length ? eventsHtml : '<p>No past events yet.</p>'}
 	</div>
 `;
-		App.updateNav();
-	},
+        App.updateNav();
+    },
 
-	openShareModal: async () => {
-		const body = document.getElementById('modal-body');
+    openShareModal: async () => {
+        const body = document.getElementById('modal-body');
 
-		const activityHtml = (App.state.activityLog || []).map(log => {
-			const date = new Date(log.created_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-			return `<div class="activity-item">
+        const activityHtml = (App.state.activityLog || []).map(log => {
+            const date = new Date(log.created_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+            return `<div class="activity-item">
 				<span class="activity-time">${date}</span>
 				<span class="activity-text"><strong>${log.username}</strong> ${log.action} <em>${log.target_name}</em></span>
 			</div>`;
-		}).join('');
+        }).join('');
 
-		body.innerHTML = `
+        body.innerHTML = `
 	<h3>Workspace Members</h3>
 			<p>Invite others to collaborate on <strong>${App.state.currentWorkspace.name}</strong>.</p>
 			<div class="form-group" style="margin: 20px 0; position: relative;">
@@ -908,49 +908,49 @@ const App = {
 				</div>
 			</div>
 `;
-		document.getElementById('modal-container').classList.add('active');
-		document.body.classList.add('modal-open');
+        document.getElementById('modal-container').classList.add('active');
+        document.body.classList.add('modal-open');
 
-		// Fetch users dynamically
-		await App.loadWorkspaceUsers();
-	},
+        // Fetch users dynamically
+        await App.loadWorkspaceUsers();
+    },
 
-	loadWorkspaceUsers: async () => {
-		const listDiv = document.getElementById('workspace-users-list');
-		if (!listDiv) return;
+    loadWorkspaceUsers: async () => {
+        const listDiv = document.getElementById('workspace-users-list');
+        if (!listDiv) return;
 
-		const res = await App.api({
-			action: 'get_workspace_users',
-			workspace_id: App.state.currentWorkspace.id
-		});
+        const res = await App.api({
+            action: 'get_workspace_users',
+            workspace_id: App.state.currentWorkspace.id
+        });
 
-		if (res.users) {
-			App.state.workspaceMembers = res.users; // Sync global state
+        if (res.users) {
+            App.state.workspaceMembers = res.users; // Sync global state
 
-			// Update board facepile if visible
-			const facepile = document.querySelector('.facepile-container');
-			if (facepile) {
-				const facepileHtml = res.users.map(m => {
-					const avatar = App.getUserAvatar(m.username);
-					return `<div class="avatar-circle" style="background-color: ${avatar.color};" title="${m.username}"><i class="fa-solid ${avatar.icon}"></i></div>`;
-				}).join('') + '<button class="btn btn-sm btn-secondary facepile-btn"><i class="fa-solid fa-user-plus"></i></button>';
-				facepile.innerHTML = facepileHtml;
-			}
+            // Update board facepile if visible
+            const facepile = document.querySelector('.facepile-container');
+            if (facepile) {
+                const facepileHtml = res.users.map(m => {
+                    const avatar = App.getUserAvatar(m.username);
+                    return `<div class="avatar-circle" style="background-color: ${avatar.color};" title="${m.username}"><i class="fa-solid ${avatar.icon}"></i></div>`;
+                }).join('') + '<button class="btn btn-sm btn-secondary facepile-btn"><i class="fa-solid fa-user-plus"></i></button>';
+                facepile.innerHTML = facepileHtml;
+            }
 
-			if (res.users.length === 0) {
-				listDiv.innerHTML = '<div style="color: var(--color-text-light);">No other users.</div>';
-				return;
-			}
+            if (res.users.length === 0) {
+                listDiv.innerHTML = '<div style="color: var(--color-text-light);">No other users.</div>';
+                return;
+            }
 
-			const isCurrentAdmin = App.state.user && res.users.some(u => u.id === App.state.user.id && u.role === 'admin');
+            const isCurrentAdmin = App.state.user && res.users.some(u => u.id === App.state.user.id && u.role === 'admin');
 
-			listDiv.innerHTML = res.users.map(u => {
-				const avatar = App.getUserAvatar(u.username);
-				const isMe = u.id === App.state.user?.id;
-				const canManage = isCurrentAdmin && !isMe;
-				const fullName = u.first_name && u.last_name ? `${u.first_name} ${u.last_name}` : u.username;
+            listDiv.innerHTML = res.users.map(u => {
+                const avatar = App.getUserAvatar(u.username);
+                const isMe = u.id === App.state.user?.id;
+                const canManage = isCurrentAdmin && !isMe;
+                const fullName = u.first_name && u.last_name ? `${u.first_name} ${u.last_name}` : u.username;
 
-				return `
+                return `
 				<div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid rgba(0,0,0,0.05); ${isMe ? 'background: rgba(108, 202, 152, 0.05);' : ''}">
 					<div style="display: flex; align-items: center; gap: 10px; flex: 1;">
 						<div class="avatar-circle" style="background-color: ${avatar.color}; width: 28px; height: 28px; font-size: 14px; margin-left: 0; border: none;" title="${u.username}"><i class="fa-solid ${avatar.icon}"></i></div>
@@ -976,144 +976,144 @@ const App = {
 					</div>
 				</div>
 			`}).join('');
-		} else {
-			listDiv.innerHTML = '<div style="color: red;">Failed to load users.</div>';
-		}
-	},
+        } else {
+            listDiv.innerHTML = '<div style="color: red;">Failed to load users.</div>';
+        }
+    },
 
-	removeWorkspaceUser: async (userId) => {
-		if (!confirm("Are you sure you want to remove this user's access?")) return;
+    removeWorkspaceUser: async (userId) => {
+        if (!confirm("Are you sure you want to remove this user's access?")) return;
 
-		const res = await App.api({
-			action: 'remove_workspace_user',
-			workspace_id: App.state.currentWorkspace.id,
-			user_id: userId
-		});
+        const res = await App.api({
+            action: 'remove_workspace_user',
+            workspace_id: App.state.currentWorkspace.id,
+            user_id: userId
+        });
 
-		if (res.success) {
-			await App.loadWorkspaceUsers();
-		} else {
-			alert(res.error || "Failed to remove user");
-		}
-	},
+        if (res.success) {
+            await App.loadWorkspaceUsers();
+        } else {
+            alert(res.error || "Failed to remove user");
+        }
+    },
 
-	resetUserPassword: async (userId, fullName) => {
-		if (!confirm(`Are you sure you want to reset the password for ${fullName}?`)) return;
+    resetUserPassword: async (userId, fullName) => {
+        if (!confirm(`Are you sure you want to reset the password for ${fullName}?`)) return;
 
-		const res = await App.api({
-			action: 'admin_reset_password',
-			workspace_id: App.state.currentWorkspace.id,
-			user_id: userId
-		});
+        const res = await App.api({
+            action: 'admin_reset_password',
+            workspace_id: App.state.currentWorkspace.id,
+            user_id: userId
+        });
 
-		if (res.success) {
-			alert(`Password reset successfully for ${fullName}.\n\nNew Temporary Password: ${res.temp_password}\n\nPlease give this to them immediately.`);
-		} else {
-			alert(res.error || "Failed to reset password");
-		}
-	},
+        if (res.success) {
+            alert(`Password reset successfully for ${fullName}.\n\nNew Temporary Password: ${res.temp_password}\n\nPlease give this to them immediately.`);
+        } else {
+            alert(res.error || "Failed to reset password");
+        }
+    },
 
-	handleUserSearch: async (query) => {
-		const resultsDiv = document.getElementById('user-search-results');
-		if (!query || query.length < 2) {
-			resultsDiv.style.display = 'none';
-			return;
-		}
+    handleUserSearch: async (query) => {
+        const resultsDiv = document.getElementById('user-search-results');
+        if (!query || query.length < 2) {
+            resultsDiv.style.display = 'none';
+            return;
+        }
 
-		const res = await App.api({ action: 'search_users', query });
-		if (res.users && res.users.length > 0) {
-			resultsDiv.innerHTML = res.users.map(u => {
-				const fullName = u.first_name && u.last_name ? `${u.first_name} ${u.last_name}` : u.username;
-				return `
+        const res = await App.api({ action: 'search_users', query });
+        if (res.users && res.users.length > 0) {
+            resultsDiv.innerHTML = res.users.map(u => {
+                const fullName = u.first_name && u.last_name ? `${u.first_name} ${u.last_name}` : u.username;
+                return `
 					<div class="search-result-item" onclick="App.inviteUser('${u.username}')">
 						<div style="font-weight: 600;">${fullName}</div>
 						<div style="font-size: 0.8rem; color: #666;">@${u.username}</div>
 					</div>
 				`;
-			}).join('');
-			resultsDiv.style.display = 'block';
-		} else {
-			resultsDiv.innerHTML = '<div style="padding: 10px; color: #999;">No users found</div>';
-			resultsDiv.style.display = 'block';
-		}
-	},
+            }).join('');
+            resultsDiv.style.display = 'block';
+        } else {
+            resultsDiv.innerHTML = '<div style="padding: 10px; color: #999;">No users found</div>';
+            resultsDiv.style.display = 'block';
+        }
+    },
 
-	inviteUser: async (username) => {
-		const res = await App.api({
-			action: 'add_workspace_user',
-			workspace_id: App.state.currentWorkspace.id,
-			username
-		});
+    inviteUser: async (username) => {
+        const res = await App.api({
+            action: 'add_workspace_user',
+            workspace_id: App.state.currentWorkspace.id,
+            username
+        });
 
-		if (res.success) {
-			document.getElementById('share-search').value = '';
-			document.getElementById('user-search-results').style.display = 'none';
-			await App.loadWorkspaceUsers();
-		} else {
-			alert(res.error || "Failed to add user");
-		}
-	},
+        if (res.success) {
+            document.getElementById('share-search').value = '';
+            document.getElementById('user-search-results').style.display = 'none';
+            await App.loadWorkspaceUsers();
+        } else {
+            alert(res.error || "Failed to add user");
+        }
+    },
 
-	updateMemberRole: async (userId, role) => {
-		const res = await App.api({
-			action: 'update_workspace_user_role',
-			workspace_id: App.state.currentWorkspace.id,
-			user_id: userId,
-			role: role
-		});
+    updateMemberRole: async (userId, role) => {
+        const res = await App.api({
+            action: 'update_workspace_user_role',
+            workspace_id: App.state.currentWorkspace.id,
+            user_id: userId,
+            role: role
+        });
 
-		if (res.success) {
-			await App.loadWorkspaceUsers();
-		} else {
-			alert(res.error || "Failed to update role");
-			await App.loadWorkspaceUsers(); // Revert UI
-		}
-	},
+        if (res.success) {
+            await App.loadWorkspaceUsers();
+        } else {
+            alert(res.error || "Failed to update role");
+            await App.loadWorkspaceUsers(); // Revert UI
+        }
+    },
 
-	updateNav: () => {
-		const nav = document.getElementById('nav-menu');
-		if (App.state.user) {
-			// Weighted greetings pool: "Hi," has a much higher chance of appearing.
-			const greetings = [
-				"Hi,", "Hi,", "Hi,", "Hi,", "Hi,",
-			];
-			const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
+    updateNav: () => {
+        const nav = document.getElementById('nav-menu');
+        if (App.state.user) {
+            // Weighted greetings pool: "Hi," has a much higher chance of appearing.
+            const greetings = [
+                "Hi,", "Hi,", "Hi,", "Hi,", "Hi,",
+            ];
+            const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
 
-			nav.innerHTML = `
+            nav.innerHTML = `
 				<span class="nav-greeting"> ${randomGreeting} ${App.state.user.username} <i class="fa-solid fa-user-astronaut"></i></span>
 				<a href="docs.php" class="btn btn-secondary" style="text-decoration: none;"><i class="fa-solid fa-book"></i> Docs</a>
 				<button class="btn btn-secondary" onclick="App.logout()">Logout</button>
 			`;
-		} else {
-			nav.innerHTML = '';
-		}
-	},
+        } else {
+            nav.innerHTML = '';
+        }
+    },
 
-	openEvent: async (id) => {
-		const res = await App.api({ action: 'get_event', event_id: id });
-		if (res.event) {
-			App.state.currentEvent = res.event;
-			App.state.currentEventItems = res.items;
-			App.state.currentEventAssignments = res.assignments;
-			App.renderEventModal();
-		}
-	},
+    openEvent: async (id) => {
+        const res = await App.api({ action: 'get_event', event_id: id });
+        if (res.event) {
+            App.state.currentEvent = res.event;
+            App.state.currentEventItems = res.items;
+            App.state.currentEventAssignments = res.assignments;
+            App.renderEventModal();
+        }
+    },
 
-	renderEventModal: () => {
-		const event = App.state.currentEvent;
-		const items = App.state.currentEventItems;
-		const editingItem = App.state.editingItem || null;
+    renderEventModal: () => {
+        const event = App.state.currentEvent;
+        const items = App.state.currentEventItems;
+        const editingItem = App.state.editingItem || null;
 
-		const body = document.getElementById('modal-body');
+        const body = document.getElementById('modal-body');
 
-		let itemsHtml = items.map(item => {
-			// Fix boolean casting for flags (DB might return "0" or "1")
-			const isFlagged = (item.is_flagged == 1 || item.is_flagged === true);
-			const isDone = (item.is_done == 1 || item.is_done === true);
-			const isDivider = (item.is_divider == 1 || item.is_divider === true);
+        let itemsHtml = items.map(item => {
+            // Fix boolean casting for flags (DB might return "0" or "1")
+            const isFlagged = (item.is_flagged == 1 || item.is_flagged === true);
+            const isDone = (item.is_done == 1 || item.is_done === true);
+            const isDivider = (item.is_divider == 1 || item.is_divider === true);
 
-			if (isDivider) {
-				return `
+            if (isDivider) {
+                return `
 	<div class="event-divider" draggable="true" ondragstart="App.dragItem(event, ${item.id})" ondragover="App.allowDropItem(event)" ondrop="App.dropItem(event, ${item.id})" id="event-item-${item.id}">
 		<div style="flex: 1; display: flex; align-items: center; gap: 8px;">
 			<span class="event-divider-text">${item.title}</span>
@@ -1124,9 +1124,9 @@ const App = {
 		</div>
 	</div>
 	`;
-			}
+            }
 
-			return `
+            return `
 	<div class="event-item ${editingItem && editingItem.id === item.id ? 'editing' : ''} ${isDone ? 'is-done' : ''}" draggable="true" ondragstart="App.dragItem(event, ${item.id})" ondragover="App.allowDropItem(event)" ondrop="App.dropItem(event, ${item.id})" id="event-item-${item.id}">
 		<div class="event-item-header">
 			<div style="flex: 1; display: flex; align-items: center; gap: 8px;">
@@ -1135,10 +1135,10 @@ const App = {
 				${isFlagged ? '<i class="fa-solid fa-flag" style="color: var(--color-accent);"></i>' : ''}
 				<div id="item-assignees-${item.id}" class="item-assignees">
 					${(App.state.currentEventAssignments || []).filter(a => a.item_id == item.id).map(a => {
-				const avatar = App.getUserAvatar(a.username);
-				const fullName = a.first_name && a.last_name ? `${a.first_name} ${a.last_name}` : a.username;
-				return `<div class="assignment-pill clickable" title="Click to remove ${fullName}" onclick="event.stopPropagation(); App.toggleAssignment(${item.id}, ${a.user_id}, true)"><div class="avatar-circle" style="background-color: ${avatar.color};"><i class="fa-solid ${avatar.icon}"></i></div><span>${fullName}</span></div>`;
-			}).join('')}
+                const avatar = App.getUserAvatar(a.username);
+                const fullName = a.first_name && a.last_name ? `${a.first_name} ${a.last_name}` : a.username;
+                return `<div class="assignment-pill clickable" title="Click to remove ${fullName}" onclick="event.stopPropagation(); App.toggleAssignment(${item.id}, ${a.user_id}, true)"><div class="avatar-circle" style="background-color: ${avatar.color};"><i class="fa-solid ${avatar.icon}"></i></div><span>${fullName}</span></div>`;
+            }).join('')}
 				</div>
 			</div>
 			<div class="item-actions">
@@ -1163,15 +1163,15 @@ const App = {
 				${item.subtitle ? `<div class="event-item-subtitle">${item.subtitle}</div>` : ''}
 			</div>
 	`;
-		}).join('');
+        }).join('');
 
-		let placeholderText = "Add a new item (e.g. Flight to Tokyo)...";
-		if (App.state.placeholders && App.state.placeholders.length > 0) {
-			const index = Math.floor(Math.random() * App.state.placeholders.length);
-			placeholderText = "e.g. " + App.state.placeholders[index] + "...";
-		}
+        let placeholderText = "Add a new item (e.g. Flight to Tokyo)...";
+        if (App.state.placeholders && App.state.placeholders.length > 0) {
+            const index = Math.floor(Math.random() * App.state.placeholders.length);
+            placeholderText = "e.g. " + App.state.placeholders[index] + "...";
+        }
 
-		body.innerHTML = `
+        body.innerHTML = `
 	<div class="event-detail-header">
 		<input type="text" class="event-title-input" value="${event.title ? event.title.replace(/"/g, '&quot;') : ''}" onblur="App.updateEventField('title', this.value)">
 				<div class="event-meta-inputs" style="gap: 10px; align-items: center;">
@@ -1237,9 +1237,9 @@ const App = {
 								</div>
 								<div style="align-self: center;">
 											${editingItem
-				? `<button class="btn btn-primary btn-sm" onclick="App.updateItem(${editingItem.id})">Update</button> <button class="btn btn-secondary btn-sm" onclick="App.cancelEdit()">Cancel</button>`
-				: `<button class="btn btn-primary btn-sm" style="height: 34px; padding: 0 16px;" onclick="App.addItem(${event.id})"><i class="fa-solid fa-plus"></i> Add</button>`
-			}
+                ? `<button class="btn btn-primary btn-sm" onclick="App.updateItem(${editingItem.id})">Update</button> <button class="btn btn-secondary btn-sm" onclick="App.cancelEdit()">Cancel</button>`
+                : `<button class="btn btn-primary btn-sm" style="height: 34px; padding: 0 16px;" onclick="App.addItem(${event.id})"><i class="fa-solid fa-plus"></i> Add</button>`
+            }
 										</div>
 								</div>
 							</div>
@@ -1249,256 +1249,256 @@ const App = {
 							</div>
 						</div>
 						`;
-		document.querySelector('.modal-content').classList.add('event-modal-wide');
-		document.getElementById('modal-container').classList.add('active');
-		document.body.classList.add('modal-open');
-	},
+        document.querySelector('.modal-content').classList.add('event-modal-wide');
+        document.getElementById('modal-container').classList.add('active');
+        document.body.classList.add('modal-open');
+    },
 
-	updateEventField: async (field, value) => {
-		console.log(`[DEBUG] updateEventField called - field: ${field}, value: ${value}`);
-		let data = {
-			action: 'update_event',
-			event_id: App.state.currentEvent.id,
-			updated_at: App.state.currentEvent.updated_at
-		};
-		data[field] = value;
+    updateEventField: async (field, value) => {
+        console.log(`[DEBUG] updateEventField called - field: ${field}, value: ${value}`);
+        let data = {
+            action: 'update_event',
+            event_id: App.state.currentEvent.id,
+            updated_at: App.state.currentEvent.updated_at
+        };
+        data[field] = value;
 
-		console.log(`[DEBUG] Payload to be sent:`, data);
+        console.log(`[DEBUG] Payload to be sent:`, data);
 
-		const res = await App.api(data);
+        const res = await App.api(data);
 
-		if (res && res.error) {
-			alert('Failed to update event: ' + res.error);
-		} else {
-			// Silently update local state on success
-			App.state.currentEvent[field] = value;
-			// Optionally refresh parent view when closing modal
-			App.shouldRefreshBoard = true;
-		}
-	},
+        if (res && res.error) {
+            alert('Failed to update event: ' + res.error);
+        } else {
+            // Silently update local state on success
+            App.state.currentEvent[field] = value;
+            // Optionally refresh parent view when closing modal
+            App.shouldRefreshBoard = true;
+        }
+    },
 
-	handleDateBlur: (inputElement, fieldName) => {
-		// If the browser natively thinks the value is empty, but the user actually typed
-		// characters into the native input box (meaning only the year is left blank)
-		if (!inputElement.value) {
-			// The browser hides the real raw text from javascript for <input type="date">
-			// But we can trick it by briefly switching to text
-			inputElement.type = 'text';
-			let rawValue = inputElement.value;
-			inputElement.type = 'date'; // Switch back immediately to preserve UI
+    handleDateBlur: (inputElement, fieldName) => {
+        // If the browser natively thinks the value is empty, but the user actually typed
+        // characters into the native input box (meaning only the year is left blank)
+        if (!inputElement.value) {
+            // The browser hides the real raw text from javascript for <input type="date">
+            // But we can trick it by briefly switching to text
+            inputElement.type = 'text';
+            let rawValue = inputElement.value;
+            inputElement.type = 'date'; // Switch back immediately to preserve UI
 
-			if (rawValue && rawValue.length > 0) {
-				// Try to figure out if it's MM/DD or YYYY-MM
-				// Browsers often format "text" reading as YYYY-MM-DD
-				let parts = rawValue.split('-');
-				if (parts.length > 1) {
-					let currentYear = new Date().getFullYear();
+            if (rawValue && rawValue.length > 0) {
+                // Try to figure out if it's MM/DD or YYYY-MM
+                // Browsers often format "text" reading as YYYY-MM-DD
+                let parts = rawValue.split('-');
+                if (parts.length > 1) {
+                    let currentYear = new Date().getFullYear();
 
-					// Depending on browser locale, the text representation varies wildly. 
-					// We just fallback to grabbing current year and forcing a standard save
-					// Often when year is missing it looks like --MM-DD or 0000-MM-DD
-					if (rawValue.startsWith('0000') || rawValue.startsWith('--')) {
-						let monthDay = rawValue.substring(rawValue.length - 5);
-						let newDateStr = `${currentYear}-${monthDay}`;
-						inputElement.value = newDateStr;
-						App.updateEventField(fieldName, newDateStr);
-					}
-				}
-			}
-		}
-	},
+                    // Depending on browser locale, the text representation varies wildly. 
+                    // We just fallback to grabbing current year and forcing a standard save
+                    // Often when year is missing it looks like --MM-DD or 0000-MM-DD
+                    if (rawValue.startsWith('0000') || rawValue.startsWith('--')) {
+                        let monthDay = rawValue.substring(rawValue.length - 5);
+                        let newDateStr = `${currentYear}-${monthDay}`;
+                        inputElement.value = newDateStr;
+                        App.updateEventField(fieldName, newDateStr);
+                    }
+                }
+            }
+        }
+    },
 
-	toggleDividerForm: (isDivider) => {
-		const subtitle = document.getElementById('new-item-subtitle');
-		const link = document.getElementById('new-item-link');
-		const meta = document.getElementById('new-item-meta-container');
+    toggleDividerForm: (isDivider) => {
+        const subtitle = document.getElementById('new-item-subtitle');
+        const link = document.getElementById('new-item-link');
+        const meta = document.getElementById('new-item-meta-container');
 
-		if (isDivider) {
-			subtitle.disabled = true; subtitle.style.display = 'none';
-			link.disabled = true; link.style.display = 'none';
-			meta.style.display = 'none';
-		} else {
-			subtitle.disabled = false; subtitle.style.display = 'block';
-			link.disabled = false; link.style.display = 'block';
-			meta.style.display = 'flex';
-		}
-	},
+        if (isDivider) {
+            subtitle.disabled = true; subtitle.style.display = 'none';
+            link.disabled = true; link.style.display = 'none';
+            meta.style.display = 'none';
+        } else {
+            subtitle.disabled = false; subtitle.style.display = 'block';
+            link.disabled = false; link.style.display = 'block';
+            meta.style.display = 'flex';
+        }
+    },
 
-	addItem: async () => {
-		const title = document.getElementById('new-item-title').value;
-		const subtitle = document.getElementById('new-item-subtitle').value;
-		const link_url = document.getElementById('new-item-link').value;
-		const date = document.getElementById('new-item-date').value;
-		const start_time = document.getElementById('new-item-start-time')?.value || null;
-		const end_date = document.getElementById('new-item-end-date')?.value || null;
-		const end_time = document.getElementById('new-item-end-time')?.value || null;
-		const is_divider = document.getElementById('new-item-is-divider').checked ? 1 : 0;
+    addItem: async () => {
+        const title = document.getElementById('new-item-title').value;
+        const subtitle = document.getElementById('new-item-subtitle').value;
+        const link_url = document.getElementById('new-item-link').value;
+        const date = document.getElementById('new-item-date').value;
+        const start_time = document.getElementById('new-item-start-time')?.value || null;
+        const end_date = document.getElementById('new-item-end-date')?.value || null;
+        const end_time = document.getElementById('new-item-end-time')?.value || null;
+        const is_divider = document.getElementById('new-item-is-divider').checked ? 1 : 0;
 
-		if (!title) return;
+        if (!title) return;
 
-		const res = await App.api({
-			action: 'add_item',
-			event_id: App.state.currentEvent.id,
-			title,
-			subtitle,
-			link_url,
-			item_date: date,
-			start_time,
-			end_date,
-			end_time,
-			is_divider
-		});
+        const res = await App.api({
+            action: 'add_item',
+            event_id: App.state.currentEvent.id,
+            title,
+            subtitle,
+            link_url,
+            item_date: date,
+            start_time,
+            end_date,
+            end_time,
+            is_divider
+        });
 
-		if (res.success) {
-			App.openEvent(App.state.currentEvent.id); // Reload modal
-			App.shouldRefreshBoard = true;
-		}
-	},
+        if (res.success) {
+            App.openEvent(App.state.currentEvent.id); // Reload modal
+            App.shouldRefreshBoard = true;
+        }
+    },
 
-	startEditItem: (id) => {
-		// Use loose equality to handle string/number mismatch
-		const item = App.state.currentEventItems.find(i => i.id == id);
-		if (item) {
-			App.state.editingItem = item;
-			App.renderEventModal();
-		}
-	},
+    startEditItem: (id) => {
+        // Use loose equality to handle string/number mismatch
+        const item = App.state.currentEventItems.find(i => i.id == id);
+        if (item) {
+            App.state.editingItem = item;
+            App.renderEventModal();
+        }
+    },
 
-	cancelEdit: () => {
-		App.state.editingItem = null;
-		App.renderEventModal();
-	},
+    cancelEdit: () => {
+        App.state.editingItem = null;
+        App.renderEventModal();
+    },
 
-	updateItem: async (id) => {
-		const title = document.getElementById('new-item-title').value;
-		const subtitle = document.getElementById('new-item-subtitle').value;
-		const link_url = document.getElementById('new-item-link').value;
-		const date = document.getElementById('new-item-date').value;
-		const start_time = document.getElementById('new-item-start-time')?.value || null;
-		const end_date = document.getElementById('new-item-end-date')?.value || null;
-		const end_time = document.getElementById('new-item-end-time')?.value || null;
-		const is_divider = document.getElementById('new-item-is-divider').checked ? 1 : 0;
+    updateItem: async (id) => {
+        const title = document.getElementById('new-item-title').value;
+        const subtitle = document.getElementById('new-item-subtitle').value;
+        const link_url = document.getElementById('new-item-link').value;
+        const date = document.getElementById('new-item-date').value;
+        const start_time = document.getElementById('new-item-start-time')?.value || null;
+        const end_date = document.getElementById('new-item-end-date')?.value || null;
+        const end_time = document.getElementById('new-item-end-time')?.value || null;
+        const is_divider = document.getElementById('new-item-is-divider').checked ? 1 : 0;
 
-		if (!title) return;
+        if (!title) return;
 
-		const res = await App.api({
-			action: 'update_item',
-			item_id: id,
-			title,
-			subtitle,
-			link_url,
-			item_date: date,
-			start_time,
-			end_date,
-			end_time,
-			is_divider,
-			updated_at: App.state.editingItem.updated_at
-		});
+        const res = await App.api({
+            action: 'update_item',
+            item_id: id,
+            title,
+            subtitle,
+            link_url,
+            item_date: date,
+            start_time,
+            end_date,
+            end_time,
+            is_divider,
+            updated_at: App.state.editingItem.updated_at
+        });
 
-		if (res.success) {
-			App.state.editingItem = null;
-			App.openEvent(App.state.currentEvent.id); // Reload modal
-			App.shouldRefreshBoard = true;
-		}
-	},
+        if (res.success) {
+            App.state.editingItem = null;
+            App.openEvent(App.state.currentEvent.id); // Reload modal
+            App.shouldRefreshBoard = true;
+        }
+    },
 
-	deleteEvent: async (id) => {
-		if (!confirm("Are you sure you want to delete this event AND all its items? This cannot be undone.")) return;
-		const res = await App.api({ action: 'delete_event', event_id: id });
-		if (res.success) {
-			App.closeModal();
-			App.openWorkspace(App.state.currentWorkspace.id);
-		} else {
-			alert(res.error || "Failed to delete event");
-		}
-	},
+    deleteEvent: async (id) => {
+        if (!confirm("Are you sure you want to delete this event AND all its items? This cannot be undone.")) return;
+        const res = await App.api({ action: 'delete_event', event_id: id });
+        if (res.success) {
+            App.closeModal();
+            App.openWorkspace(App.state.currentWorkspace.id);
+        } else {
+            alert(res.error || "Failed to delete event");
+        }
+    },
 
-	deleteItem: async (id) => {
-		if (!confirm("Remove this item?")) return;
-		await App.api({ action: 'delete_item', item_id: id });
-		App.openEvent(App.state.currentEvent.id);
-		App.shouldRefreshBoard = true;
-	},
+    deleteItem: async (id) => {
+        if (!confirm("Remove this item?")) return;
+        await App.api({ action: 'delete_item', item_id: id });
+        App.openEvent(App.state.currentEvent.id);
+        App.shouldRefreshBoard = true;
+    },
 
-	deleteCategory: async (id) => {
-		const cat = App.state.categories.find(c => c.id == id);
-		if (!cat) return;
+    deleteCategory: async (id) => {
+        const cat = App.state.categories.find(c => c.id == id);
+        if (!cat) return;
 
-		const eventsInCat = App.state.events.filter(e => e.event_category_id == id).length;
+        const eventsInCat = App.state.events.filter(e => e.event_category_id == id).length;
 
-		if (!window.confirm(`Are you sure you want to delete the category "${cat.name}"?`)) return;
+        if (!window.confirm(`Are you sure you want to delete the category "${cat.name}"?`)) return;
 
-		if (eventsInCat > 0) {
-			if (!window.confirm(`WARNING: This category contains ${eventsInCat} event(s). Deleting it will delete ALL these events permanently.\n\nAre you ABSOLUTELY sure?`)) return;
-		}
+        if (eventsInCat > 0) {
+            if (!window.confirm(`WARNING: This category contains ${eventsInCat} event(s). Deleting it will delete ALL these events permanently.\n\nAre you ABSOLUTELY sure?`)) return;
+        }
 
-		await App.api({ action: 'delete_category', id });
-		App.openWorkspace(App.state.currentWorkspace.id);
-	},
+        await App.api({ action: 'delete_category', id });
+        App.openWorkspace(App.state.currentWorkspace.id);
+    },
 
-	toggleFlag: async (id) => {
-		await App.api({ action: 'toggle_flag', item_id: id });
-		if (App.state.currentEvent) {
-			App.openEvent(App.state.currentEvent.id);
-		} else {
-			App.openWorkspace(App.state.currentWorkspace.id);
-		}
-		App.shouldRefreshBoard = true;
-	},
+    toggleFlag: async (id) => {
+        await App.api({ action: 'toggle_flag', item_id: id });
+        if (App.state.currentEvent) {
+            App.openEvent(App.state.currentEvent.id);
+        } else {
+            App.openWorkspace(App.state.currentWorkspace.id);
+        }
+        App.shouldRefreshBoard = true;
+    },
 
-	toggleDone: async (id) => {
-		// Detect if we are marking as done to trigger celebration
-		const item = App.state.eventItems.find(it => it.id == id);
-		const willBeDone = item && !(item.is_done == 1 || item.is_done === true);
+    toggleDone: async (id) => {
+        // Detect if we are marking as done to trigger celebration
+        const item = App.state.eventItems.find(it => it.id == id);
+        const willBeDone = item && !(item.is_done == 1 || item.is_done === true);
 
-		const res = await App.api({ action: 'toggle_done', item_id: id });
+        const res = await App.api({ action: 'toggle_done', item_id: id });
 
-		if (res.success) {
-			if (willBeDone) {
-				App.state.pendingCelebration = true;
-			}
+        if (res.success) {
+            if (willBeDone) {
+                App.state.pendingCelebration = true;
+            }
 
-			if (App.state.currentEvent) {
-				App.openEvent(App.state.currentEvent.id);
-			} else {
-				App.openWorkspace(App.state.currentWorkspace.id);
-			}
-			App.shouldRefreshBoard = true;
-		}
-	},
+            if (App.state.currentEvent) {
+                App.openEvent(App.state.currentEvent.id);
+            } else {
+                App.openWorkspace(App.state.currentWorkspace.id);
+            }
+            App.shouldRefreshBoard = true;
+        }
+    },
 
-	saveWorkspaceNotes: async (notes) => {
-		if (!App.state.currentWorkspace) return;
+    saveWorkspaceNotes: async (notes) => {
+        if (!App.state.currentWorkspace) return;
 
-		const res = await App.api({
-			action: 'update_workspace',
-			workspace_id: App.state.currentWorkspace.id,
-			notes: notes
-		});
+        const res = await App.api({
+            action: 'update_workspace',
+            workspace_id: App.state.currentWorkspace.id,
+            notes: notes
+        });
 
-		if (res.success) {
-			App.state.currentWorkspace.notes = notes;
-		} else {
-			alert("Failed to save notes: " + (res.error || "Unknown error"));
-		}
-	},
+        if (res.success) {
+            App.state.currentWorkspace.notes = notes;
+        } else {
+            alert("Failed to save notes: " + (res.error || "Unknown error"));
+        }
+    },
 
-	generatePDF: async (tripId) => {
-		const event = App.state.currentEvent;
-		const items = App.state.currentEventItems;
+    generatePDF: async (tripId) => {
+        const event = App.state.currentEvent;
+        const items = App.state.currentEventItems;
 
-		let itemsHtml = items.map(item => {
-			const isDivider = (item.is_divider == 1 || item.is_divider === true);
+        let itemsHtml = items.map(item => {
+            const isDivider = (item.is_divider == 1 || item.is_divider === true);
 
-			if (isDivider) {
-				return `
+            if (isDivider) {
+                return `
 						<div class="pdf-divider">
 							${item.title}
 						</div>
 						`;
-			}
+            }
 
-			return `
+            return `
 						<div class="pdf-item">
 							<div class="pdf-item-header">
 								<strong>${item.title}</strong>
@@ -1513,13 +1513,13 @@ const App = {
 				` : ''}
 						</div>
 						`;
-		}).join('');
+        }).join('');
 
-		const dateRange = trip.start_date ? `${trip.start_date}${trip.end_date ? ' to ' + trip.end_date : ''}` : '';
+        const dateRange = trip.start_date ? `${trip.start_date}${trip.end_date ? ' to ' + trip.end_date : ''}` : '';
 
-		// Provide raw HTML. html2pdf manages the invisible rendering iframe automatically. 
-		// We inject the CSS directly here because the iframe won't inherit styles from index.css or event_details.css
-		const htmlStr = `
+        // Provide raw HTML. html2pdf manages the invisible rendering iframe automatically. 
+        // We inject the CSS directly here because the iframe won't inherit styles from index.css or event_details.css
+        const htmlStr = `
 						<div style="width: 700px; max-width: 100%; box-sizing: border-box; padding: 30px; background-color: white; font-family: system-ui, -apple-system, sans-serif; color: #333;">
 							<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 								<style>
@@ -1570,38 +1570,38 @@ const App = {
 						</div>
 						`;
 
-		const opt = {
-			margin: 0.5,
-			filename: `${trip.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_itinerary.pdf`,
-			image: { type: 'jpeg', quality: 0.98 },
-			html2canvas: { scale: 2, useCORS: true, scrollY: 0, scrollX: 0 },
-			jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
-		};
+        const opt = {
+            margin: 0.5,
+            filename: `${trip.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_itinerary.pdf`,
+            image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: { scale: 2, useCORS: true, scrollY: 0, scrollX: 0 },
+            jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
+        };
 
-		const btn = document.querySelector(`button[onclick="App.generatePDF(${tripId})"]`);
-		if (btn) {
-			btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Generating...';
-			btn.disabled = true;
-		}
+        const btn = document.querySelector(`button[onclick="App.generatePDF(${tripId})"]`);
+        if (btn) {
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Generating...';
+            btn.disabled = true;
+        }
 
-		try {
-			await html2pdf().set(opt).from(htmlStr).save();
-		} catch (e) {
-			console.error("PDF Generation error:", e);
-			alert("Error generating PDF.");
-		} finally {
-			if (btn) {
-				btn.innerHTML = '<i class="fa-solid fa-file-pdf"></i> Download PDF';
-				btn.disabled = false;
-			}
-		}
-	},
+        try {
+            await html2pdf().set(opt).from(htmlStr).save();
+        } catch (e) {
+            console.error("PDF Generation error:", e);
+            alert("Error generating PDF.");
+        } finally {
+            if (btn) {
+                btn.innerHTML = '<i class="fa-solid fa-file-pdf"></i> Download PDF';
+                btn.disabled = false;
+            }
+        }
+    },
 
-	// Modal Logic
-	openCreateWorkspaceModal: () => {
-		App.shouldRefreshBoard = false; // Reset
-		const body = document.getElementById('modal-body');
-		body.innerHTML = `
+    // Modal Logic
+    openCreateWorkspaceModal: () => {
+        App.shouldRefreshBoard = false; // Reset
+        const body = document.getElementById('modal-body');
+        body.innerHTML = `
 						<h3>Create a New Workspace</h3>
 						<div class="form-group" style="margin: 20px 0;">
 							<label>Workspace Name</label>
@@ -1609,49 +1609,49 @@ const App = {
 						</div>
 						<button class="btn btn-primary" onclick="App.submitCreateWorkspace()">Create</button>
 						`;
-		document.getElementById('modal-container').classList.add('active');
-		document.body.classList.add('modal-open');
-	},
+        document.getElementById('modal-container').classList.add('active');
+        document.body.classList.add('modal-open');
+    },
 
-	closeModal: () => {
-		document.getElementById('modal-container').classList.remove('active');
-		document.querySelector('.modal-content').classList.remove('event-modal-wide');
-		document.body.classList.remove('modal-open');
-		if (App.shouldRefreshBoard && App.state.currentWorkspace) {
-			App.openWorkspace(App.state.currentWorkspace.id); // Refresh board to show new trip dates/titles
-		}
-	},
+    closeModal: () => {
+        document.getElementById('modal-container').classList.remove('active');
+        document.querySelector('.modal-content').classList.remove('event-modal-wide');
+        document.body.classList.remove('modal-open');
+        if (App.shouldRefreshBoard && App.state.currentWorkspace) {
+            App.openWorkspace(App.state.currentWorkspace.id); // Refresh board to show new trip dates/titles
+        }
+    },
 
-	// Event Handlers
-	handleLoginBtn: () => {
-		const u = document.getElementById('username').value;
-		const p = document.getElementById('password').value;
-		if (u && p) App.login(u, p);
-	},
+    // Event Handlers
+    handleLoginBtn: () => {
+        const u = document.getElementById('username').value;
+        const p = document.getElementById('password').value;
+        if (u && p) App.login(u, p);
+    },
 
-	handleRegisterBtn: () => {
-		const u = document.getElementById('reg-username').value;
-		const p = document.getElementById('reg-password').value;
-		const f = document.getElementById('reg-firstname').value;
-		const l = document.getElementById('reg-lastname').value;
-		if (u && p) App.register(u, p, f, l);
-	},
+    handleRegisterBtn: () => {
+        const u = document.getElementById('reg-username').value;
+        const p = document.getElementById('reg-password').value;
+        const f = document.getElementById('reg-firstname').value;
+        const l = document.getElementById('reg-lastname').value;
+        if (u && p) App.register(u, p, f, l);
+    },
 
-	toggleTheme: () => {
-		document.documentElement.classList.toggle('dark-theme');
-		if (document.documentElement.classList.contains('dark-theme')) {
-			localStorage.setItem('practica_theme', 'dark');
-		} else {
-			localStorage.setItem('practica_theme', 'light');
-		}
-	},
+    toggleTheme: () => {
+        document.documentElement.classList.toggle('dark-theme');
+        if (document.documentElement.classList.contains('dark-theme')) {
+            localStorage.setItem('practica_theme', 'dark');
+        } else {
+            localStorage.setItem('practica_theme', 'light');
+        }
+    },
 
-	openSharingModal: async (tripId) => {
-		const data = await App.api({ action: 'get_share_info', event_id: tripId });
-		const modalBody = document.getElementById('modal-body');
-		const shareUrl = `${window.location.origin}${window.location.pathname.replace('index.php', '')}share.php?token=${data.share_token}`;
+    openSharingModal: async (tripId) => {
+        const data = await App.api({ action: 'get_share_info', event_id: tripId });
+        const modalBody = document.getElementById('modal-body');
+        const shareUrl = `${window.location.origin}${window.location.pathname.replace('index.php', '')}share.php?token=${data.share_token}`;
 
-		modalBody.innerHTML = `
+        modalBody.innerHTML = `
 			<div style="padding: 20px;">
 				<h3><i class="fa-solid fa-share-nodes"></i> Share Event</h3>
 				<p style="color: var(--color-text-light); margin-bottom: 20px;">Anyone with the link can view a read-only version of this trip.</p>
@@ -1677,277 +1677,277 @@ const App = {
 				</div>
 			</div>
 		`;
-		document.getElementById('modal-container').style.display = 'flex';
-	},
+        document.getElementById('modal-container').style.display = 'flex';
+    },
 
-	toggleSharing: async (tripId, isEnabled) => {
-		const data = await App.api({ action: 'toggle_sharing', event_id: tripId, is_public: isEnabled ? 1 : 0 });
-		if (data.success) {
-			// Update UI
-			const linkSection = document.getElementById('share-link-section');
-			if (linkSection) linkSection.style.display = isEnabled ? 'block' : 'none';
+    toggleSharing: async (tripId, isEnabled) => {
+        const data = await App.api({ action: 'toggle_sharing', event_id: tripId, is_public: isEnabled ? 1 : 0 });
+        if (data.success) {
+            // Update UI
+            const linkSection = document.getElementById('share-link-section');
+            if (linkSection) linkSection.style.display = isEnabled ? 'block' : 'none';
 
-			// Refresh share info to ensure token is populated if it was just generated
-			if (isEnabled) {
-				App.openSharingModal(tripId);
-			}
-		}
-	},
+            // Refresh share info to ensure token is populated if it was just generated
+            if (isEnabled) {
+                App.openSharingModal(tripId);
+            }
+        }
+    },
 
-	copyShareLink: (e) => {
-		const copyText = document.getElementById("share-url-input");
-		copyText.select();
-		copyText.setSelectionRange(0, 99999);
-		navigator.clipboard.writeText(copyText.value);
+    copyShareLink: (e) => {
+        const copyText = document.getElementById("share-url-input");
+        copyText.select();
+        copyText.setSelectionRange(0, 99999);
+        navigator.clipboard.writeText(copyText.value);
 
-		// Visual feedback
-		const btn = e.currentTarget;
-		const originalText = btn.innerHTML;
-		btn.innerHTML = '<i class="fa-solid fa-check"></i> Copied!';
-		btn.style.background = 'var(--color-sea)';
-		btn.style.color = 'white';
-		setTimeout(() => {
-			btn.innerHTML = originalText;
-			btn.style.background = '';
-			btn.style.color = '';
-		}, 2000);
-	},
+        // Visual feedback
+        const btn = e.currentTarget;
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '<i class="fa-solid fa-check"></i> Copied!';
+        btn.style.background = 'var(--color-sea)';
+        btn.style.color = 'white';
+        setTimeout(() => {
+            btn.innerHTML = originalText;
+            btn.style.background = '';
+            btn.style.color = '';
+        }, 2000);
+    },
 
 
-	createNewWorkspace: () => {
-		App.openCreateWorkspaceModal();
-	},
+    createNewWorkspace: () => {
+        App.openCreateWorkspaceModal();
+    },
 
-	// Drag and Drop
-	drag: (ev, tripId) => {
-		ev.dataTransfer.setData("text/plain", tripId);
-		ev.dataTransfer.effectAllowed = "move";
-		ev.currentTarget.classList.add('dragging');
-	},
+    // Drag and Drop
+    drag: (ev, tripId) => {
+        ev.dataTransfer.setData("text/plain", tripId);
+        ev.dataTransfer.effectAllowed = "move";
+        ev.currentTarget.classList.add('dragging');
+    },
 
-	allowDrop: (ev) => {
-		ev.preventDefault();
-		ev.dataTransfer.dropEffect = "move";
+    allowDrop: (ev) => {
+        ev.preventDefault();
+        ev.dataTransfer.dropEffect = "move";
 
-		const list = ev.currentTarget;
-		const afterElement = App.getDragAfterElement(list, ev.clientY);
-		const draggable = document.querySelector('.dragging');
-		if (afterElement == null) {
-			list.appendChild(draggable);
-		} else {
-			list.insertBefore(draggable, afterElement);
-		}
-	},
+        const list = ev.currentTarget;
+        const afterElement = App.getDragAfterElement(list, ev.clientY);
+        const draggable = document.querySelector('.dragging');
+        if (afterElement == null) {
+            list.appendChild(draggable);
+        } else {
+            list.insertBefore(draggable, afterElement);
+        }
+    },
 
-	getDragAfterElement: (container, y) => {
-		const draggableElements = [...container.querySelectorAll('.event-card:not(.dragging)')];
+    getDragAfterElement: (container, y) => {
+        const draggableElements = [...container.querySelectorAll('.event-card:not(.dragging)')];
 
-		return draggableElements.reduce((closest, child) => {
-			const box = child.getBoundingClientRect();
-			const offset = y - box.top - box.height / 2;
-			if (offset < 0 && offset > closest.offset) {
-				return { offset: offset, element: child };
-			} else {
-				return closest;
-			}
-		}, { offset: Number.NEGATIVE_INFINITY }).element;
-	},
+        return draggableElements.reduce((closest, child) => {
+            const box = child.getBoundingClientRect();
+            const offset = y - box.top - box.height / 2;
+            if (offset < 0 && offset > closest.offset) {
+                return { offset: offset, element: child };
+            } else {
+                return closest;
+            }
+        }, { offset: Number.NEGATIVE_INFINITY }).element;
+    },
 
-	drop: async (ev, categoryId) => {
-		ev.preventDefault();
-		const tripId = ev.dataTransfer.getData("text/plain");
-		const draggable = document.querySelector('.dragging');
-		draggable.classList.remove('dragging');
+    drop: async (ev, categoryId) => {
+        ev.preventDefault();
+        const tripId = ev.dataTransfer.getData("text/plain");
+        const draggable = document.querySelector('.dragging');
+        draggable.classList.remove('dragging');
 
-		// Update UI (DOM is already updated by allowDrop, but we need to update state and persist)
+        // Update UI (DOM is already updated by allowDrop, but we need to update state and persist)
 
-		// Find the new order
-		const list = ev.currentTarget;
-		const eventCards = [...list.querySelectorAll('.event-card')];
-		const newEventIds = eventCards.map(card => card.id.replace('event-', ''));
+        // Find the new order
+        const list = ev.currentTarget;
+        const eventCards = [...list.querySelectorAll('.event-card')];
+        const newEventIds = eventCards.map(card => card.id.replace('event-', ''));
 
-		// Update local state
-		const event = App.state.events.find(t => t.id == eventId);
-		if (event) {
-			event.category_id = categoryId;
-			// Update sort orders in state
-			newEventIds.forEach((id, index) => {
-				const t = App.state.events.find(event => event.id == id);
-				if (t) t.sort_order = index;
-			});
-		}
+        // Update local state
+        const event = App.state.events.find(t => t.id == eventId);
+        if (event) {
+            event.category_id = categoryId;
+            // Update sort orders in state
+            newEventIds.forEach((id, index) => {
+                const t = App.state.events.find(event => event.id == id);
+                if (t) t.sort_order = index;
+            });
+        }
 
-		// Call API
-		await App.api({
-			action: 'reorder_events',
-			category_id: categoryId,
-			event_ids: newEventIds
-		});
-	},
-	// Trip Item Drag and Drop
-	dragItem: (ev, itemId) => {
-		ev.dataTransfer.setData("text/item", itemId);
-		ev.dataTransfer.effectAllowed = "move";
-		ev.currentTarget.classList.add('dragging-item');
-	},
+        // Call API
+        await App.api({
+            action: 'reorder_events',
+            category_id: categoryId,
+            event_ids: newEventIds
+        });
+    },
+    // Trip Item Drag and Drop
+    dragItem: (ev, itemId) => {
+        ev.dataTransfer.setData("text/item", itemId);
+        ev.dataTransfer.effectAllowed = "move";
+        ev.currentTarget.classList.add('dragging-item');
+    },
 
-	allowDropItem: (ev) => {
-		ev.preventDefault();
-		ev.dataTransfer.dropEffect = "move";
+    allowDropItem: (ev) => {
+        ev.preventDefault();
+        ev.dataTransfer.dropEffect = "move";
 
-		const list = document.querySelector('.items-list');
-		const afterElement = App.getDragAfterItemElement(list, ev.clientY);
-		const draggable = document.querySelector('.dragging-item');
-		if (!draggable || !list) return;
+        const list = document.querySelector('.items-list');
+        const afterElement = App.getDragAfterItemElement(list, ev.clientY);
+        const draggable = document.querySelector('.dragging-item');
+        if (!draggable || !list) return;
 
-		if (afterElement == null) {
-			list.appendChild(draggable);
-		} else {
-			list.insertBefore(draggable, afterElement);
-		}
-	},
+        if (afterElement == null) {
+            list.appendChild(draggable);
+        } else {
+            list.insertBefore(draggable, afterElement);
+        }
+    },
 
-	getDragAfterItemElement: (container, y) => {
-		const draggableElements = [...container.querySelectorAll('.event-item:not(.dragging-item), .event-divider:not(.dragging-item)')];
+    getDragAfterItemElement: (container, y) => {
+        const draggableElements = [...container.querySelectorAll('.event-item:not(.dragging-item), .event-divider:not(.dragging-item)')];
 
-		return draggableElements.reduce((closest, child) => {
-			const box = child.getBoundingClientRect();
-			const offset = y - box.top - box.height / 2;
-			if (offset < 0 && offset > closest.offset) {
-				return { offset: offset, element: child };
-			} else {
-				return closest;
-			}
-		}, { offset: Number.NEGATIVE_INFINITY }).element;
-	},
+        return draggableElements.reduce((closest, child) => {
+            const box = child.getBoundingClientRect();
+            const offset = y - box.top - box.height / 2;
+            if (offset < 0 && offset > closest.offset) {
+                return { offset: offset, element: child };
+            } else {
+                return closest;
+            }
+        }, { offset: Number.NEGATIVE_INFINITY }).element;
+    },
 
-	dropItem: async (ev, targetItemId) => {
-		ev.preventDefault();
-		const itemId = ev.dataTransfer.getData("text/item");
-		if (!itemId) return;
-		const draggable = document.querySelector('.dragging-item');
-		if (draggable) draggable.classList.remove('dragging-item');
+    dropItem: async (ev, targetItemId) => {
+        ev.preventDefault();
+        const itemId = ev.dataTransfer.getData("text/item");
+        if (!itemId) return;
+        const draggable = document.querySelector('.dragging-item');
+        if (draggable) draggable.classList.remove('dragging-item');
 
-		const list = document.querySelector('.items-list');
-		const itemElements = [...list.querySelectorAll('.event-item, .event-divider')];
-		const newItemIds = itemElements.map(el => el.id.replace('event-item-', ''));
+        const list = document.querySelector('.items-list');
+        const itemElements = [...list.querySelectorAll('.event-item, .event-divider')];
+        const newItemIds = itemElements.map(el => el.id.replace('event-item-', ''));
 
-		// Update local state sort order for both the modal and the main board cache
-		newItemIds.forEach((id, index) => {
-			const currentItem = App.state.currentEventItems.find(i => i.id == id);
-			if (currentItem) currentItem.sort_order = index;
+        // Update local state sort order for both the modal and the main board cache
+        newItemIds.forEach((id, index) => {
+            const currentItem = App.state.currentEventItems.find(i => i.id == id);
+            if (currentItem) currentItem.sort_order = index;
 
-			const globalItem = App.state.eventItems.find(i => i.id == id);
-			if (globalItem) globalItem.sort_order = index;
-		});
+            const globalItem = App.state.eventItems.find(i => i.id == id);
+            if (globalItem) globalItem.sort_order = index;
+        });
 
-		// Re-sort local state array
-		App.state.currentEventItems.sort((a, b) => a.sort_order - b.sort_order);
+        // Re-sort local state array
+        App.state.currentEventItems.sort((a, b) => a.sort_order - b.sort_order);
 
-		await App.api({
-			action: 'reorder_items',
-			item_ids: newItemIds
-		});
-	},
+        await App.api({
+            action: 'reorder_items',
+            item_ids: newItemIds
+        });
+    },
 
-	// Category Drag and Drop
-	dragCategory: (ev, categoryId) => {
-		// Prevent triggering if dragging a trip *inside* the category
-		if (ev.target.classList.contains('event-card')) return;
+    // Category Drag and Drop
+    dragCategory: (ev, categoryId) => {
+        // Prevent triggering if dragging a trip *inside* the category
+        if (ev.target.classList.contains('event-card')) return;
 
-		ev.dataTransfer.setData("text/category", categoryId);
-		ev.dataTransfer.effectAllowed = "move";
-		ev.currentTarget.classList.add('dragging-category');
-		// Add a visual cue to the CSS so it stands out while dragging
-		ev.currentTarget.style.opacity = "0.5";
-	},
+        ev.dataTransfer.setData("text/category", categoryId);
+        ev.dataTransfer.effectAllowed = "move";
+        ev.currentTarget.classList.add('dragging-category');
+        // Add a visual cue to the CSS so it stands out while dragging
+        ev.currentTarget.style.opacity = "0.5";
+    },
 
-	allowDropCategory: (ev) => {
-		// Only allow dropping categories, not events
-		if (!ev.dataTransfer.types.includes("text/category")) return;
-		ev.preventDefault();
-		ev.dataTransfer.dropEffect = "move";
+    allowDropCategory: (ev) => {
+        // Only allow dropping categories, not events
+        if (!ev.dataTransfer.types.includes("text/category")) return;
+        ev.preventDefault();
+        ev.dataTransfer.dropEffect = "move";
 
-		const container = ev.currentTarget;
-		const afterElement = App.getDragAfterCategory(container, ev.clientX);
-		const draggable = document.querySelector('.dragging-category');
+        const container = ev.currentTarget;
+        const afterElement = App.getDragAfterCategory(container, ev.clientX);
+        const draggable = document.querySelector('.dragging-category');
 
-		if (draggable) {
-			if (afterElement == null) {
-				container.appendChild(draggable);
-			} else {
-				container.insertBefore(draggable, afterElement);
-			}
-		}
-	},
+        if (draggable) {
+            if (afterElement == null) {
+                container.appendChild(draggable);
+            } else {
+                container.insertBefore(draggable, afterElement);
+            }
+        }
+    },
 
-	getDragAfterCategory: (container, x) => {
-		const draggableElements = [...container.querySelectorAll('.category-column:not(.dragging-category)')];
+    getDragAfterCategory: (container, x) => {
+        const draggableElements = [...container.querySelectorAll('.category-column:not(.dragging-category)')];
 
-		return draggableElements.reduce((closest, child) => {
-			const box = child.getBoundingClientRect();
-			const offset = x - box.left - box.width / 2;
-			if (offset < 0 && offset > closest.offset) {
-				return { offset: offset, element: child };
-			} else {
-				return closest;
-			}
-		}, { offset: Number.NEGATIVE_INFINITY }).element;
-	},
+        return draggableElements.reduce((closest, child) => {
+            const box = child.getBoundingClientRect();
+            const offset = x - box.left - box.width / 2;
+            if (offset < 0 && offset > closest.offset) {
+                return { offset: offset, element: child };
+            } else {
+                return closest;
+            }
+        }, { offset: Number.NEGATIVE_INFINITY }).element;
+    },
 
-	dropCategory: async (ev) => {
-		// Only process if it's a category
-		if (!ev.dataTransfer.types.includes("text/category")) return;
-		ev.preventDefault();
+    dropCategory: async (ev) => {
+        // Only process if it's a category
+        if (!ev.dataTransfer.types.includes("text/category")) return;
+        ev.preventDefault();
 
-		const categoryId = ev.dataTransfer.getData("text/category");
-		const draggable = document.querySelector('.dragging-category');
+        const categoryId = ev.dataTransfer.getData("text/category");
+        const draggable = document.querySelector('.dragging-category');
 
-		if (draggable) {
-			draggable.classList.remove('dragging-category');
-			draggable.style.opacity = "1";
-		}
+        if (draggable) {
+            draggable.classList.remove('dragging-category');
+            draggable.style.opacity = "1";
+        }
 
-		const container = ev.currentTarget;
-		const categoryColumns = [...container.querySelectorAll('.category-column')];
-		const newCategoryIds = categoryColumns.map(col => col.id.replace('cat-', ''));
+        const container = ev.currentTarget;
+        const categoryColumns = [...container.querySelectorAll('.category-column')];
+        const newCategoryIds = categoryColumns.map(col => col.id.replace('cat-', ''));
 
-		// Update local state
-		newCategoryIds.forEach((id, index) => {
-			const c = App.state.categories.find(cat => cat.id == id);
-			if (c) c.sort_order = index;
-		});
+        // Update local state
+        newCategoryIds.forEach((id, index) => {
+            const c = App.state.categories.find(cat => cat.id == id);
+            if (c) c.sort_order = index;
+        });
 
-		// Call API
-		await App.api({
-			action: 'reorder_categories',
-			workspace_id: App.state.currentWorkspace.id,
-			category_ids: newCategoryIds
-		});
-	},
+        // Call API
+        await App.api({
+            action: 'reorder_categories',
+            workspace_id: App.state.currentWorkspace.id,
+            category_ids: newCategoryIds
+        });
+    },
 
-	// Item Assignments
-	openAssignPopup: (e, itemId) => {
-		e.stopPropagation();
-		// Remove existing popup if any
-		const existing = document.querySelector('.assign-popup');
-		if (existing) existing.remove();
+    // Item Assignments
+    openAssignPopup: (e, itemId) => {
+        e.stopPropagation();
+        // Remove existing popup if any
+        const existing = document.querySelector('.assign-popup');
+        if (existing) existing.remove();
 
-		const itemRect = e.currentTarget.getBoundingClientRect();
-		const popup = document.createElement('div');
-		popup.className = 'assign-popup';
-		popup.style.top = `${window.scrollY + itemRect.bottom + 5}px`;
-		popup.style.left = `${window.scrollX + itemRect.left - 100}px`;
+        const itemRect = e.currentTarget.getBoundingClientRect();
+        const popup = document.createElement('div');
+        popup.className = 'assign-popup';
+        popup.style.top = `${window.scrollY + itemRect.bottom + 5}px`;
+        popup.style.left = `${window.scrollX + itemRect.left - 100}px`;
 
-		const itemAssignments = App.state.currentEventAssignments || [];
-		const itemAssignedUserIds = itemAssignments.filter(a => a.item_id == itemId).map(a => a.user_id);
+        const itemAssignments = App.state.currentEventAssignments || [];
+        const itemAssignedUserIds = itemAssignments.filter(a => a.item_id == itemId).map(a => a.user_id);
 
-		const membersList = App.state.workspaceMembers.map(m => {
-			const isAssigned = itemAssignedUserIds.includes(m.id);
-			const avatar = App.getUserAvatar(m.username);
-			const fullName = m.first_name && m.last_name ? `${m.first_name} ${m.last_name}` : m.username;
-			const searchStr = `${m.first_name || ''} ${m.last_name || ''} ${m.username}`.toLowerCase();
-			return `
+        const membersList = App.state.workspaceMembers.map(m => {
+            const isAssigned = itemAssignedUserIds.includes(m.id);
+            const avatar = App.getUserAvatar(m.username);
+            const fullName = m.first_name && m.last_name ? `${m.first_name} ${m.last_name}` : m.username;
+            const searchStr = `${m.first_name || ''} ${m.last_name || ''} ${m.username}`.toLowerCase();
+            return `
 				<div class="assign-member-item ${isAssigned ? 'assigned' : ''}" 
 					 data-search="${searchStr}"
 					 onclick="App.toggleAssignment(${itemId}, ${m.id}, ${isAssigned})">
@@ -1960,9 +1960,9 @@ const App = {
 					${isAssigned ? '<i class="fa-solid fa-check" style="margin-left: auto; color: var(--color-sea-blue);"></i>' : ''}
 				</div>
 			`;
-		}).join('');
+        }).join('');
 
-		popup.innerHTML = `
+        popup.innerHTML = `
 			<h4>Assign User</h4>
 			<input type="text" class="assign-search" placeholder="Search members..." oninput="App.filterAssignees(this.value)">
 			<div class="assign-member-list">
@@ -1970,63 +1970,63 @@ const App = {
 			</div>
 		`;
 
-		document.body.appendChild(popup);
+        document.body.appendChild(popup);
 
-		// Close popup when clicking outside
-		const closeHandler = (ev) => {
-			if (!popup.contains(ev.target) && ev.target !== e.currentTarget) {
-				popup.remove();
-				document.removeEventListener('click', closeHandler);
-			}
-		};
-		setTimeout(() => document.addEventListener('click', closeHandler), 10);
-	},
+        // Close popup when clicking outside
+        const closeHandler = (ev) => {
+            if (!popup.contains(ev.target) && ev.target !== e.currentTarget) {
+                popup.remove();
+                document.removeEventListener('click', closeHandler);
+            }
+        };
+        setTimeout(() => document.addEventListener('click', closeHandler), 10);
+    },
 
-	toggleAssignment: async (itemId, userId, isAssigned) => {
-		// Toggle user assignments: "Sticky" and real-time, just the way we like it.
-		const action = isAssigned ? 'unassign_item' : 'assign_item';
-		try {
-			await App.api({ action, item_id: itemId, user_id: userId });
-			// Refresh event details to get new assignments
-			const res = await App.api({ action: 'get_event', event_id: App.state.currentEvent.id });
-			App.state.currentEventAssignments = res.assignments;
-			App.renderEventModal();
-			App.shouldRefreshBoard = true; // Mark board for refresh on close
-		} catch (e) {
-			console.error(e);
-		}
-	},
+    toggleAssignment: async (itemId, userId, isAssigned) => {
+        // Toggle user assignments: "Sticky" and real-time, just the way we like it.
+        const action = isAssigned ? 'unassign_item' : 'assign_item';
+        try {
+            await App.api({ action, item_id: itemId, user_id: userId });
+            // Refresh event details to get new assignments
+            const res = await App.api({ action: 'get_event', event_id: App.state.currentEvent.id });
+            App.state.currentEventAssignments = res.assignments;
+            App.renderEventModal();
+            App.shouldRefreshBoard = true; // Mark board for refresh on close
+        } catch (e) {
+            console.error(e);
+        }
+    },
 
-	filterAssignees: (val) => {
-		const items = document.querySelectorAll('.assign-member-item');
-		val = val.toLowerCase();
-		items.forEach(item => {
-			const searchStr = item.getAttribute('data-search') || '';
-			item.style.display = searchStr.includes(val) ? 'flex' : 'none';
-		});
-	}
+    filterAssignees: (val) => {
+        const items = document.querySelectorAll('.assign-member-item');
+        val = val.toLowerCase();
+        items.forEach(item => {
+            const searchStr = item.getAttribute('data-search') || '';
+            item.style.display = searchStr.includes(val) ? 'flex' : 'none';
+        });
+    }
 };
 
 // Global helpers for HTML onclick events
 function closeModal() {
-	App.closeModal();
+    App.closeModal();
 }
 
 window.showModal = () => {
-	document.getElementById('modal-container').classList.add('active');
-	document.body.classList.add('modal-open');
+    document.getElementById('modal-container').classList.add('active');
+    document.body.classList.add('modal-open');
 };
 
 window.closeModal = () => {
-	document.getElementById('modal-container').classList.remove('active');
-	document.body.classList.remove('modal-open');
-	if (App.shouldRefreshBoard) {
-		App.renderBoard();
-		App.shouldRefreshBoard = false;
-	}
+    document.getElementById('modal-container').classList.remove('active');
+    document.body.classList.remove('modal-open');
+    if (App.shouldRefreshBoard) {
+        App.renderBoard();
+        App.shouldRefreshBoard = false;
+    }
 };
 
 // Start the app
 document.addEventListener('DOMContentLoaded', () => {
-	App.init();
+    App.init();
 });
